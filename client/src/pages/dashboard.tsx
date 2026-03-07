@@ -52,7 +52,7 @@ import {
   Upload,
   FileSpreadsheet,
   Users,
-  CheckCircle2,
+  ExternalLink,
   RefreshCw,
 } from "lucide-react";
 import { formatBDT } from "@/lib/format";
@@ -453,8 +453,19 @@ export default function Dashboard() {
                         {client.adsAccount}
                       </TableCell>
                       <TableCell>
-                        {client.googleSheetId && (
-                          <CheckCircle2 className="w-4 h-4 text-primary" />
+                        {client.googleSheetUrl && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            data-testid={`button-sheet-${client.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(client.googleSheetUrl!, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </Button>
                         )}
                       </TableCell>
                     </TableRow>
