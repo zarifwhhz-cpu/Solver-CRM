@@ -98,10 +98,13 @@ export async function readClientSheetData(spreadsheetId: string) {
 
 export async function readMainSheetClients(spreadsheetId: string) {
   const sheets = await getUncachableGoogleSheetClient();
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: 'A:D',
-  });
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const hasDashboard = sheetNames.includes('Client Dashboard');
+
+  const range = hasDashboard ? "'Client Dashboard'!A1:K200" : 'A1:K200';
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range });
 
   const rows = response.data.values || [];
   const clients: Array<{
@@ -117,7 +120,11 @@ export async function readMainSheetClients(spreadsheetId: string) {
     googleSheetId: string | null;
   }> = [];
 
-  for (let i = 1; i < rows.length; i++) {
+  const headerRow = rows[0] || [];
+  const hasStatus = headerRow.some((h: string) => h?.toLowerCase().includes('status'));
+  const dataStart = hasStatus ? 2 : 1;
+
+  for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length < 2) continue;
 
@@ -129,24 +136,45 @@ export async function readMainSheetClients(spreadsheetId: string) {
 
     let googleSheetUrl: string | null = null;
     let googleSheetId: string | null = null;
-    const rawUrl = (row[3] || '').trim().replace(/^-/, '');
-    if (rawUrl && rawUrl.includes('docs.google.com/spreadsheets')) {
-      googleSheetUrl = rawUrl;
-      googleSheetId = extractSheetId(rawUrl);
-    }
 
-    clients.push({
-      clientId: clientIdRaw,
-      name,
-      balance: "0",
-      totalDue: "0",
-      campaignDue: "0",
-      status: "Active",
-      executive: "",
-      adsAccount: "",
-      googleSheetUrl,
-      googleSheetId,
-    });
+    if (hasStatus) {
+      const campDue = cleanAmount(row[4] || '');
+      const status = (row[6] || 'Inactive').trim();
+      const executive = (row[7] || '').trim();
+      const adsAccount = (row[8] || '').trim();
+
+      clients.push({
+        clientId: clientIdRaw,
+        name,
+        balance: "0",
+        totalDue: "0",
+        campaignDue: campDue,
+        status: ['Active', 'Inactive', 'Hold'].includes(status) ? status : 'Inactive',
+        executive,
+        adsAccount,
+        googleSheetUrl: null,
+        googleSheetId: null,
+      });
+    } else {
+      const rawUrl = (row[3] || '').trim().replace(/^-/, '');
+      if (rawUrl && rawUrl.includes('docs.google.com/spreadsheets')) {
+        googleSheetUrl = rawUrl;
+        googleSheetId = extractSheetId(rawUrl);
+      }
+
+      clients.push({
+        clientId: clientIdRaw,
+        name,
+        balance: "0",
+        totalDue: "0",
+        campaignDue: "0",
+        status: "Active",
+        executive: "",
+        adsAccount: "",
+        googleSheetUrl,
+        googleSheetId,
+      });
+    }
   }
 
   return clients;
