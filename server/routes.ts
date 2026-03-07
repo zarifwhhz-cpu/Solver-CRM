@@ -253,6 +253,101 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/bulk-payments", async (req, res) => {
+    try {
+      const { notes } = req.body;
+      if (!notes || typeof notes !== "string" || !notes.trim()) {
+        return res.status(400).json({ message: "Payment notes text is required" });
+      }
+
+      const lines = notes.split("\n").filter((l: string) => l.trim());
+      const paymentRegex = /(\d{2})\/(\d{2})\/(\d{2,4})\/cli-(\d+)\/lst-([^/]+)\/pay-(\d+(?:\.\d+)?)/;
+      const parsed: Array<{ date: string; clientId: number; method: string; amount: string; raw: string }> = [];
+      const failed: Array<{ line: string; error: string }> = [];
+
+      for (const line of lines) {
+        const match = line.match(paymentRegex);
+        if (!match) {
+          failed.push({ line: line.trim(), error: "Could not parse payment format" });
+          continue;
+        }
+        const [, dd, mm, yy, cliId, method, amount] = match;
+        const fullYear = yy.length === 2 ? `20${yy}` : yy;
+        parsed.push({
+          date: `${dd}/${mm}/${fullYear}`,
+          clientId: parseInt(cliId),
+          method,
+          amount,
+          raw: line.trim(),
+        });
+      }
+
+      const allClients = await storage.getClients();
+      const results: Array<{ clientId: number; name: string; amount: string; date: string; status: string; error?: string }> = [];
+
+      for (const payment of parsed) {
+        const client = allClients.find(c => c.clientId === payment.clientId);
+        if (!client) {
+          results.push({ clientId: payment.clientId, name: "Unknown", amount: payment.amount, date: payment.date, status: "error", error: `Client ${payment.clientId} not found` });
+          continue;
+        }
+
+        try {
+          const paymentNote = `${payment.date.replace(/20(\d{2})$/, '$1')}/cli-${payment.clientId}/lst-${payment.method}/pay-${payment.amount}`;
+          const txnData = {
+            clientId: client.id,
+            date: payment.date,
+            bdtAmount: payment.amount,
+            usdAmount: "0",
+            platform: "Facebook",
+            remainingBdt: "0",
+            platformSpend: "0",
+            paymentNote,
+          };
+
+          await storage.createTransaction(txnData);
+
+          const currentBalance = parseFloat(client.balance) || 0;
+          const newBalance = (currentBalance + parseFloat(payment.amount)).toFixed(2);
+          await storage.updateClient(client.id, { balance: newBalance, totalDue: newBalance });
+          client.balance = newBalance;
+
+          let sheetError: string | undefined;
+          if (client.googleSheetId) {
+            try {
+              await appendToSheet(client.googleSheetId, {
+                date: payment.date,
+                bdtAmount: payment.amount,
+                usdAmount: "0",
+                platform: "Facebook",
+                remainingBdt: "0",
+                platformSpend: "0",
+                paymentNote,
+              });
+            } catch (sheetErr: any) {
+              sheetError = sheetErr.message;
+              console.error(`Sheet sync failed for ${client.name}: ${sheetErr.message}`);
+            }
+          }
+
+          const status = sheetError ? "partial" : "success";
+          results.push({ clientId: payment.clientId, name: client.name, amount: payment.amount, date: payment.date, status, error: sheetError ? `DB saved, sheet failed: ${sheetError}` : undefined });
+          console.log(`Payment: ${client.name} (${payment.clientId}) +৳${payment.amount} via ${payment.method} [${status}]`);
+        } catch (err: any) {
+          results.push({ clientId: payment.clientId, name: client.name, amount: payment.amount, date: payment.date, status: "error", error: err.message });
+        }
+      }
+
+      const succeeded = results.filter(r => r.status === "success").length;
+      const partial = results.filter(r => r.status === "partial").length;
+      const failedCount = results.filter(r => r.status === "error").length;
+
+      res.json({ success: true, totalLines: lines.length, processed: results.length, succeeded, partial, failed: failedCount, unparsed: failed, results });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/stats", async (_req, res) => {
     try {
       const allClients = await storage.getClients();

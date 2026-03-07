@@ -1,4 +1,4 @@
-import { LayoutDashboard, Megaphone } from "lucide-react";
+import { LayoutDashboard, Megaphone, Upload } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -14,6 +14,7 @@ import {
 
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Bulk Payments", url: "/bulk-payments", icon: Upload },
 ];
 
 export function AppSidebar() {
@@ -40,7 +41,7 @@ export function AppSidebar() {
               {items.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton asChild data-active={location === item.url}>
-                    <Link href={item.url} data-testid={`link-${item.title.toLowerCase()}`}>
+                    <Link href={item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
                       <item.icon />
                       <span>{item.title}</span>
                     </Link>

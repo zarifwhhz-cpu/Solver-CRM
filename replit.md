@@ -31,6 +31,8 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `DELETE /api/transactions/:id` - Delete transaction
 - `POST /api/clients/:id/sync` - Sync from Google Sheet
 - `POST /api/import-sheet` - Bulk import clients from main sheet
+- `POST /api/sync-all` - Sync all client sheets (parallel batches of 5)
+- `POST /api/bulk-payments` - Parse WhatsApp payment notes, create transactions, update balances, sync to sheets
 - `GET /api/stats` - Dashboard statistics
 
 ## File Structure
@@ -41,6 +43,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Main dashboard
 - `client/src/pages/client-detail.tsx` - Client detail with transactions
+- `client/src/pages/bulk-payments.tsx` - Bulk payment upload from WhatsApp notes
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar
 - `client/src/lib/format.ts` - Currency formatting utilities
 
