@@ -144,7 +144,7 @@ export async function registerRoutes(
       if (!client) return res.status(404).json({ message: "Client not found" });
       if (!client.googleSheetId) return res.status(400).json({ message: "No Google Sheet linked" });
 
-      const sheetData = await readClientSheetData(client.googleSheetId);
+      const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId);
 
       await storage.deleteTransactionsByClientId(client.id);
 
@@ -152,14 +152,7 @@ export async function registerRoutes(
         await storage.createTransaction({ clientId: client.id, ...txn });
       }
 
-      let totalPayments = 0;
-      let totalSpend = 0;
-      for (const txn of sheetData) {
-        totalPayments += parseFloat(txn.bdtAmount) || 0;
-        totalSpend += parseFloat(txn.platformSpend) || 0;
-      }
-      const balance = (totalPayments - totalSpend).toFixed(2);
-
+      const balance = sheetBalance || "0";
       await storage.updateClient(client.id, { balance, totalDue: balance });
 
       res.json({ success: true, transactionsCount: sheetData.length, balance });
@@ -186,18 +179,12 @@ export async function registerRoutes(
         }
         const batch = syncableClients.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (client) => {
-          const sheetData = await readClientSheetData(client.googleSheetId!);
+          const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId!);
           await storage.deleteTransactionsByClientId(client.id);
           for (const txn of sheetData) {
             await storage.createTransaction({ clientId: client.id, ...txn });
           }
-          let totalPayments = 0;
-          let totalSpend = 0;
-          for (const txn of sheetData) {
-            totalPayments += parseFloat(txn.bdtAmount) || 0;
-            totalSpend += parseFloat(txn.platformSpend) || 0;
-          }
-          const balance = (totalPayments - totalSpend).toFixed(2);
+          const balance = sheetBalance || "0";
           await storage.updateClient(client.id, { balance, totalDue: balance });
           return { transactionsCount: sheetData.length, balance };
         }));

@@ -66,6 +66,15 @@ export async function readClientSheetData(spreadsheetId: string) {
   });
 
   const rows = response.data.values || [];
+
+  let sheetBalance: string | null = null;
+  if (rows.length > 1) {
+    const row2 = rows[1];
+    if (row2 && row2[3]) {
+      sheetBalance = cleanAmount(row2[3]);
+    }
+  }
+
   const txns: Array<{
     date: string;
     bdtAmount: string;
@@ -93,7 +102,7 @@ export async function readClientSheetData(spreadsheetId: string) {
     txns.push({ date, bdtAmount, usdAmount, platform, remainingBdt, platformSpend, paymentNote });
   }
 
-  return txns;
+  return { txns, sheetBalance };
 }
 
 export async function readMainSheetClients(spreadsheetId: string) {
@@ -138,6 +147,7 @@ export async function readMainSheetClients(spreadsheetId: string) {
     let googleSheetId: string | null = null;
 
     if (hasStatus) {
+      const dashBalance = cleanAmount(row[3] || '');
       const campDue = cleanAmount(row[4] || '');
       const status = (row[6] || 'Inactive').trim();
       const executive = (row[7] || '').trim();
@@ -146,8 +156,8 @@ export async function readMainSheetClients(spreadsheetId: string) {
       clients.push({
         clientId: clientIdRaw,
         name,
-        balance: "0",
-        totalDue: "0",
+        balance: dashBalance,
+        totalDue: dashBalance,
         campaignDue: campDue,
         status: ['Active', 'Inactive', 'Hold'].includes(status) ? status : 'Inactive',
         executive,

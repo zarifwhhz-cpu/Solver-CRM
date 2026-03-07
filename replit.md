@@ -31,7 +31,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `DELETE /api/transactions/:id` - Delete transaction
 - `POST /api/clients/:id/sync` - Sync from Google Sheet
 - `POST /api/import-sheet` - Bulk import clients from main sheet
-- `POST /api/sync-all` - Sync all client sheets (parallel batches of 5)
+- `POST /api/sync-all` - Sync all client sheets (parallel batches of 3 with 4s delay for rate limiting)
 - `POST /api/bulk-payments` - Parse WhatsApp payment notes, create transactions, update balances, sync to sheets
 - `GET /api/stats` - Dashboard statistics
 
@@ -50,4 +50,6 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 ## Google Sheets Integration
 - Uses Replit Google Sheets connector (OAuth)
 - Client sheets follow format: Date | BDT Amount | USD Amount | Platform | Remaining | Spend | Payment Note
+- Client sheet row 2 cell D2 contains the BDT balance (read during sync instead of recalculating from transactions)
 - Main sheet follows format: Client ID | Name | GO- | Balance | TotalDue | CampaignDue | Status | Executive | AdsAccount
+- Dashboard Balance column (index 3) is read during import and used as balance/totalDue
