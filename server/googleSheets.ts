@@ -60,9 +60,14 @@ function cleanAmount(value: string): string {
 
 export async function readClientSheetData(spreadsheetId: string) {
   const sheets = await getUncachableGoogleSheetClient();
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'A:G',
+    range: `'${pnlSheet}'!A:G`,
   });
 
   const rows = response.data.values || [];
@@ -212,9 +217,27 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
     return `$${Math.abs(n).toFixed(2)}`;
   };
 
-  await sheets.spreadsheets.values.append({
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+
+  const colA = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'A:G',
+    range: `'${pnlSheet}'!A:A`,
+  });
+  const allRows = colA.data.values || [];
+  let lastDataRow = 3;
+  for (let i = allRows.length - 1; i >= 3; i--) {
+    if (allRows[i] && allRows[i][0] && allRows[i][0].trim()) {
+      lastDataRow = i + 1;
+      break;
+    }
+  }
+  const targetRow = lastDataRow + 1;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${pnlSheet}'!A${targetRow}:G${targetRow}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [[

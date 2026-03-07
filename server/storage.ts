@@ -64,24 +64,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getBulkPaymentHistory(fromDate?: string, toDate?: string): Promise<Transaction[]> {
-    const conditions: SQL[] = [
-      like(transactions.paymentNote, '%/cli-%/lst-%/pay-%'),
-    ];
-
-    if (fromDate) {
-      const [fy, fm, fd] = fromDate.split('-');
-      const fromDDMMYYYY = `${fd}/${fm}/${fy}`;
-      conditions.push(sql`to_date(${transactions.date}, 'DD/MM/YYYY') >= to_date(${fromDDMMYYYY}, 'DD/MM/YYYY')`);
-    }
-    if (toDate) {
-      const [ty, tm, td] = toDate.split('-');
-      const toDDMMYYYY = `${td}/${tm}/${ty}`;
-      conditions.push(sql`to_date(${transactions.date}, 'DD/MM/YYYY') <= to_date(${toDDMMYYYY}, 'DD/MM/YYYY')`);
-    }
-
-    return await db.select().from(transactions)
-      .where(and(...conditions))
+    const allPayments = await db.select().from(transactions)
+      .where(like(transactions.paymentNote, '%/cli-%/lst-%/pay-%'))
       .orderBy(desc(transactions.id));
+
+    if (!fromDate && !toDate) return allPayments;
+
+    return allPayments.filter(t => {
+      const noteDate = this.extractDateFromNote(t.paymentNote || '');
+      if (!noteDate) return true;
+
+      if (fromDate && noteDate < fromDate) return false;
+      if (toDate && noteDate > toDate) return false;
+      return true;
+    });
+  }
+
+  private extractDateFromNote(note: string): string | null {
+    const match = note.match(/^(\d{1,2})\/(\d{2})\/(\d{2,4})\/cli-/);
+    if (!match) return null;
+    const [, dd, mm, yy] = match;
+    const fullYear = yy.length === 2 ? `20${yy}` : yy;
+    return `${fullYear}-${mm}-${dd.padStart(2, '0')}`;
   }
 }
 

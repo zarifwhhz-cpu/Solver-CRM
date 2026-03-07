@@ -172,10 +172,10 @@ export async function registerRoutes(
         results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
       }
 
-      const BATCH_SIZE = 3;
+      const BATCH_SIZE = 2;
       for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 4000));
+          await new Promise(resolve => setTimeout(resolve, 5000));
         }
         const batch = syncableClients.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (client) => {
@@ -251,8 +251,16 @@ export async function registerRoutes(
       const clientMap = new Map(allClients.map(c => [c.id, c]));
       const history = await storage.getBulkPaymentHistory(fromDate, toDate);
       const totalAmount = history.reduce((sum, t) => sum + (parseFloat(t.bdtAmount) || 0), 0);
+      const extractNoteDate = (note: string): string | null => {
+        const m = note.match(/^(\d{1,2})\/(\d{2})\/(\d{2,4})\/cli-/);
+        if (!m) return null;
+        const [, dd, mm, yy] = m;
+        const fullYear = yy.length === 2 ? `20${yy}` : yy;
+        return `${dd.padStart(2, '0')}/${mm}/${fullYear}`;
+      };
       const enriched = history.map(t => ({
         ...t,
+        date: extractNoteDate(t.paymentNote || '') || t.date,
         clientName: clientMap.get(t.clientId)?.name || "Unknown",
         clientCode: clientMap.get(t.clientId)?.clientId || 0,
       }));
