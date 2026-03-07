@@ -173,26 +173,21 @@ export async function registerRoutes(
       const allClients = await storage.getClients();
       const results: Array<{ clientId: number; name: string; status: string; transactionsCount?: number; balance?: string; error?: string }> = [];
 
-      for (let idx = 0; idx < allClients.length; idx++) {
-        const client = allClients[idx];
-        if (!client.googleSheetId) {
-          results.push({ clientId: client.clientId, name: client.name, status: "skipped", error: "No sheet linked" });
-          continue;
-        }
+      const syncableClients = allClients.filter(c => c.googleSheetId);
+      const skippedClients = allClients.filter(c => !c.googleSheetId);
+      for (const c of skippedClients) {
+        results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
+      }
 
-        if (idx > 0 && idx % 50 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 60000));
-        }
-
-        try {
-          const sheetData = await readClientSheetData(client.googleSheetId);
-
+      const BATCH_SIZE = 5;
+      for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
+        const batch = syncableClients.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(async (client) => {
+          const sheetData = await readClientSheetData(client.googleSheetId!);
           await storage.deleteTransactionsByClientId(client.id);
-
           for (const txn of sheetData) {
             await storage.createTransaction({ clientId: client.id, ...txn });
           }
-
           let totalPayments = 0;
           let totalSpend = 0;
           for (const txn of sheetData) {
@@ -200,14 +195,20 @@ export async function registerRoutes(
             totalSpend += parseFloat(txn.platformSpend) || 0;
           }
           const balance = (totalPayments - totalSpend).toFixed(2);
-
           await storage.updateClient(client.id, { balance, totalDue: balance });
+          return { transactionsCount: sheetData.length, balance };
+        }));
 
-          results.push({ clientId: client.clientId, name: client.name, status: "success", transactionsCount: sheetData.length, balance });
-          console.log(`Synced ${client.name} (${client.clientId}): ${sheetData.length} transactions, balance: ${balance}`);
-        } catch (err: any) {
-          results.push({ clientId: client.clientId, name: client.name, status: "error", error: err.message });
-          console.error(`Failed to sync ${client.name} (${client.clientId}): ${err.message}`);
+        for (let j = 0; j < batch.length; j++) {
+          const client = batch[j];
+          const result = batchResults[j];
+          if (result.status === "fulfilled") {
+            results.push({ clientId: client.clientId, name: client.name, status: "success", ...result.value });
+            console.log(`Synced ${client.name} (${client.clientId}): ${result.value.transactionsCount} txns, bal: ${result.value.balance}`);
+          } else {
+            results.push({ clientId: client.clientId, name: client.name, status: "error", error: result.reason?.message || "Unknown error" });
+            console.error(`Failed to sync ${client.name} (${client.clientId}): ${result.reason?.message}`);
+          }
         }
       }
 
