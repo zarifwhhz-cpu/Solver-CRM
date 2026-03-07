@@ -168,6 +168,59 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/sync-all", async (req, res) => {
+    try {
+      const allClients = await storage.getClients();
+      const results: Array<{ clientId: number; name: string; status: string; transactionsCount?: number; balance?: string; error?: string }> = [];
+
+      for (let idx = 0; idx < allClients.length; idx++) {
+        const client = allClients[idx];
+        if (!client.googleSheetId) {
+          results.push({ clientId: client.clientId, name: client.name, status: "skipped", error: "No sheet linked" });
+          continue;
+        }
+
+        if (idx > 0 && idx % 50 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 60000));
+        }
+
+        try {
+          const sheetData = await readClientSheetData(client.googleSheetId);
+
+          await storage.deleteTransactionsByClientId(client.id);
+
+          for (const txn of sheetData) {
+            await storage.createTransaction({ clientId: client.id, ...txn });
+          }
+
+          let totalPayments = 0;
+          let totalSpend = 0;
+          for (const txn of sheetData) {
+            totalPayments += parseFloat(txn.bdtAmount) || 0;
+            totalSpend += parseFloat(txn.platformSpend) || 0;
+          }
+          const balance = (totalPayments - totalSpend).toFixed(2);
+
+          await storage.updateClient(client.id, { balance, totalDue: balance });
+
+          results.push({ clientId: client.clientId, name: client.name, status: "success", transactionsCount: sheetData.length, balance });
+          console.log(`Synced ${client.name} (${client.clientId}): ${sheetData.length} transactions, balance: ${balance}`);
+        } catch (err: any) {
+          results.push({ clientId: client.clientId, name: client.name, status: "error", error: err.message });
+          console.error(`Failed to sync ${client.name} (${client.clientId}): ${err.message}`);
+        }
+      }
+
+      const succeeded = results.filter(r => r.status === "success").length;
+      const failed = results.filter(r => r.status === "error").length;
+      const skipped = results.filter(r => r.status === "skipped").length;
+
+      res.json({ success: true, total: allClients.length, succeeded, failed, skipped, results });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/import-sheet", async (req, res) => {
     try {
       const parsed = importSheetSchema.safeParse(req.body);

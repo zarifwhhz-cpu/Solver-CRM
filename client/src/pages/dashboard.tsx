@@ -53,6 +53,7 @@ import {
   FileSpreadsheet,
   Users,
   CheckCircle2,
+  RefreshCw,
 } from "lucide-react";
 import { formatBDT } from "@/lib/format";
 import type { Client } from "@shared/schema";
@@ -198,6 +199,24 @@ export default function Dashboard() {
     },
   });
 
+  const syncAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/sync-all");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({
+        title: "Sync complete",
+        description: `${data.succeeded} synced, ${data.failed} failed, ${data.skipped} skipped out of ${data.total} clients`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Sync failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const importMutation = useMutation({
     mutationFn: async (data: z.infer<typeof importSheetSchema>) => {
       const res = await apiRequest("POST", "/api/import-sheet", data);
@@ -240,6 +259,15 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="secondary"
+              onClick={() => syncAllMutation.mutate()}
+              disabled={syncAllMutation.isPending}
+              data-testid="button-sync-all"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncAllMutation.isPending ? "animate-spin" : ""}`} />
+              {syncAllMutation.isPending ? "Syncing..." : "Sync All"}
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setShowImport(true)}
