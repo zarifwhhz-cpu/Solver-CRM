@@ -1,38 +1,66 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { clients, transactions, type Client, type InsertClient, type Transaction, type InsertTransaction } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  getClients(): Promise<Client[]>;
+  getClient(id: number): Promise<Client | undefined>;
+  getClientByClientId(clientId: number): Promise<Client | undefined>;
+  createClient(client: InsertClient): Promise<Client>;
+  updateClient(id: number, data: Partial<InsertClient>): Promise<Client | undefined>;
+  deleteClient(id: number): Promise<void>;
+  getTransactions(clientId: number): Promise<Transaction[]>;
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  deleteTransaction(id: number): Promise<void>;
+  deleteTransactionsByClientId(clientId: number): Promise<void>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async getClients(): Promise<Client[]> {
+    return await db.select().from(clients);
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getClient(id: number): Promise<Client | undefined> {
+    const result = await db.select().from(clients).where(eq(clients.id, id));
+    return result[0];
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async getClientByClientId(clientId: number): Promise<Client | undefined> {
+    const result = await db.select().from(clients).where(eq(clients.clientId, clientId));
+    return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async createClient(client: InsertClient): Promise<Client> {
+    const result = await db.insert(clients).values(client).returning();
+    return result[0];
+  }
+
+  async updateClient(id: number, data: Partial<InsertClient>): Promise<Client | undefined> {
+    const result = await db.update(clients).set(data).where(eq(clients.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteClient(id: number): Promise<void> {
+    await db.delete(transactions).where(eq(transactions.clientId, id));
+    await db.delete(clients).where(eq(clients.id, id));
+  }
+
+  async getTransactions(clientId: number): Promise<Transaction[]> {
+    return await db.select().from(transactions).where(eq(transactions.clientId, clientId));
+  }
+
+  async createTransaction(transaction: InsertTransaction): Promise<Transaction> {
+    const result = await db.insert(transactions).values(transaction).returning();
+    return result[0];
+  }
+
+  async deleteTransaction(id: number): Promise<void> {
+    await db.delete(transactions).where(eq(transactions.id, id));
+  }
+
+  async deleteTransactionsByClientId(clientId: number): Promise<void> {
+    await db.delete(transactions).where(eq(transactions.clientId, clientId));
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
