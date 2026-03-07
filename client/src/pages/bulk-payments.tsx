@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,8 +15,9 @@ import {
 } from "@/components/ui/table";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste, History } from "lucide-react";
+import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste, History, Calendar, Filter } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
 import { formatBDT } from "@/lib/format";
 
 type PaymentResult = {
@@ -37,6 +39,12 @@ type HistoryEntry = {
   paymentNote: string | null;
 };
 
+type HistoryResponse = {
+  payments: HistoryEntry[];
+  count: number;
+  totalAmount: string;
+};
+
 type BulkResponse = {
   success: boolean;
   totalLines: number;
@@ -51,10 +59,22 @@ type BulkResponse = {
 export default function BulkPayments() {
   const [notes, setNotes] = useState("");
   const [response, setResponse] = useState<BulkResponse | null>(null);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const { toast } = useToast();
 
-  const { data: history, isLoading: historyLoading } = useQuery<HistoryEntry[]>({
-    queryKey: ["/api/bulk-payments/history"],
+  const historyQueryParams = new URLSearchParams();
+  if (fromDate) historyQueryParams.set("from", fromDate);
+  if (toDate) historyQueryParams.set("to", toDate);
+  const historyUrl = `/api/bulk-payments/history${historyQueryParams.toString() ? `?${historyQueryParams.toString()}` : ""}`;
+
+  const { data: historyData, isLoading: historyLoading } = useQuery<HistoryResponse>({
+    queryKey: ["/api/bulk-payments/history", fromDate, toDate],
+    queryFn: async () => {
+      const res = await fetch(historyUrl);
+      if (!res.ok) throw new Error("Failed to load history");
+      return res.json();
+    },
   });
 
   const bulkMutation = useMutation({
@@ -267,7 +287,7 @@ export default function BulkPayments() {
                   {response.failed} failed
                 </span>
               )}
-              {response.unparsed.length > 0 && (
+              {(response.unparsed?.length ?? 0) > 0 && (
                 <span className="flex items-center gap-1 text-yellow-600">
                   <AlertTriangle className="w-4 h-4" />
                   {response.unparsed.length} unparseable
@@ -286,7 +306,7 @@ export default function BulkPayments() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {response.results.map((r, idx) => (
+                  {(response.results || []).map((r, idx) => (
                     <TableRow key={idx} data-testid={`row-result-${idx}`}>
                       <TableCell>
                         <div>
@@ -322,7 +342,7 @@ export default function BulkPayments() {
               </Table>
             </div>
 
-            {response.unparsed.length > 0 && (
+            {(response.unparsed?.length ?? 0) > 0 && (
               <div className="mt-4">
                 <p className="text-sm font-medium text-yellow-600 mb-2">Unparsed Lines:</p>
                 <div className="space-y-1">
@@ -339,13 +359,56 @@ export default function BulkPayments() {
       )}
       <Card data-testid="card-history">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <History className="w-5 h-5" />
-            Payment History
-            {history && (
-              <Badge variant="outline">{history.length} recent</Badge>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <History className="w-5 h-5" />
+              Payment History
+              {historyData && (
+                <Badge variant="outline" data-testid="badge-history-count">{historyData.count} payments</Badge>
+              )}
+            </CardTitle>
+            {historyData && historyData.count > 0 && (
+              <div className="text-sm font-medium text-green-600" data-testid="text-history-total">
+                Total: ৳{historyData.totalAmount}
+              </div>
             )}
-          </CardTitle>
+          </div>
+          <div className="flex flex-wrap items-end gap-4 pt-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> From
+              </Label>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="w-40 h-9 text-sm"
+                data-testid="input-date-from"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> To
+              </Label>
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="w-40 h-9 text-sm"
+                data-testid="input-date-to"
+              />
+            </div>
+            {(fromDate || toDate) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setFromDate(""); setToDate(""); }}
+                data-testid="button-clear-dates"
+              >
+                Clear filter
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {historyLoading ? (
@@ -354,7 +417,7 @@ export default function BulkPayments() {
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : history && history.length > 0 ? (
+          ) : historyData && historyData.payments.length > 0 ? (
             <div className="border rounded-lg overflow-hidden">
               <Table>
                 <TableHeader>
@@ -367,7 +430,7 @@ export default function BulkPayments() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {history.map((h) => {
+                  {historyData.payments.map((h) => {
                     const methodMatch = h.paymentNote?.match(/lst-([^/]+)/);
                     const method = methodMatch ? methodMatch[1] : "-";
                     return (
@@ -396,7 +459,7 @@ export default function BulkPayments() {
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-history">
-              No bulk payments recorded yet. Use the form above to process your first batch.
+              {fromDate || toDate ? "No payments found for the selected date range." : "No bulk payments recorded yet. Use the form above to process your first batch."}
             </p>
           )}
         </CardContent>

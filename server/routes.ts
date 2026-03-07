@@ -253,17 +253,20 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/bulk-payments/history", async (_req, res) => {
+  app.get("/api/bulk-payments/history", async (req, res) => {
     try {
+      const fromDate = typeof req.query.from === "string" ? req.query.from : undefined;
+      const toDate = typeof req.query.to === "string" ? req.query.to : undefined;
       const allClients = await storage.getClients();
       const clientMap = new Map(allClients.map(c => [c.id, c]));
-      const history = await storage.getBulkPaymentHistory();
+      const history = await storage.getBulkPaymentHistory(fromDate, toDate);
+      const totalAmount = history.reduce((sum, t) => sum + (parseFloat(t.bdtAmount) || 0), 0);
       const enriched = history.map(t => ({
         ...t,
         clientName: clientMap.get(t.clientId)?.name || "Unknown",
         clientCode: clientMap.get(t.clientId)?.clientId || 0,
       }));
-      res.json(enriched);
+      res.json({ payments: enriched, count: enriched.length, totalAmount: totalAmount.toFixed(2) });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { clients, transactions, type Client, type InsertClient, type Transaction, type InsertTransaction } from "@shared/schema";
-import { eq, like, desc } from "drizzle-orm";
+import { eq, like, desc, and, sql, type SQL } from "drizzle-orm";
 
 export interface IStorage {
   getClients(): Promise<Client[]>;
@@ -13,7 +13,7 @@ export interface IStorage {
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number): Promise<void>;
   deleteTransactionsByClientId(clientId: number): Promise<void>;
-  getBulkPaymentHistory(): Promise<Transaction[]>;
+  getBulkPaymentHistory(fromDate?: string, toDate?: string): Promise<Transaction[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -63,11 +63,25 @@ export class DatabaseStorage implements IStorage {
     await db.delete(transactions).where(eq(transactions.clientId, clientId));
   }
 
-  async getBulkPaymentHistory(): Promise<Transaction[]> {
+  async getBulkPaymentHistory(fromDate?: string, toDate?: string): Promise<Transaction[]> {
+    const conditions: SQL[] = [
+      like(transactions.paymentNote, '%/cli-%/lst-%/pay-%'),
+    ];
+
+    if (fromDate) {
+      const [fy, fm, fd] = fromDate.split('-');
+      const fromDDMMYYYY = `${fd}/${fm}/${fy}`;
+      conditions.push(sql`to_date(${transactions.date}, 'DD/MM/YYYY') >= to_date(${fromDDMMYYYY}, 'DD/MM/YYYY')`);
+    }
+    if (toDate) {
+      const [ty, tm, td] = toDate.split('-');
+      const toDDMMYYYY = `${td}/${tm}/${ty}`;
+      conditions.push(sql`to_date(${transactions.date}, 'DD/MM/YYYY') <= to_date(${toDDMMYYYY}, 'DD/MM/YYYY')`);
+    }
+
     return await db.select().from(transactions)
-      .where(like(transactions.paymentNote, '%/cli-%/lst-%/pay-%'))
-      .orderBy(desc(transactions.id))
-      .limit(100);
+      .where(and(...conditions))
+      .orderBy(desc(transactions.id));
   }
 }
 
