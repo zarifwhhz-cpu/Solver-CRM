@@ -179,8 +179,11 @@ export async function registerRoutes(
         results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
       }
 
-      const BATCH_SIZE = 5;
+      const BATCH_SIZE = 3;
       for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 4000));
+        }
         const batch = syncableClients.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (client) => {
           const sheetData = await readClientSheetData(client.googleSheetId!);
