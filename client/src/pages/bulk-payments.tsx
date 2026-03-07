@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste, History, Calendar, Filter } from "lucide-react";
+import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste, History, Calendar, Filter, Sheet } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { formatBDT } from "@/lib/format";
@@ -37,6 +37,7 @@ type HistoryEntry = {
   date: string | null;
   bdtAmount: string;
   paymentNote: string | null;
+  googleSheetId: string | null;
 };
 
 type HistoryResponse = {
@@ -94,6 +95,24 @@ export default function BulkPayments() {
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const [pushingId, setPushingId] = useState<number | null>(null);
+
+  const pushToSheetMutation = useMutation({
+    mutationFn: async (transactionId: number) => {
+      setPushingId(transactionId);
+      const res = await apiRequest("POST", "/api/bulk-payments/push-to-sheet", { transactionId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setPushingId(null);
+      toast({ title: "Pushed to Sheet", description: data.message });
+    },
+    onError: (err: Error) => {
+      setPushingId(null);
+      toast({ title: "Push Failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -427,6 +446,7 @@ export default function BulkPayments() {
                     <TableHead>Method</TableHead>
                     <TableHead className="text-right">Amount</TableHead>
                     <TableHead>Note</TableHead>
+                    <TableHead className="text-center">Sheet</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -450,6 +470,26 @@ export default function BulkPayments() {
                         </TableCell>
                         <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
                           {h.paymentNote || "-"}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {h.googleSheetId ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2"
+                              disabled={pushingId === h.id}
+                              onClick={() => pushToSheetMutation.mutate(h.id)}
+                              data-testid={`button-push-sheet-${h.id}`}
+                            >
+                              {pushingId === h.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Sheet className="w-3.5 h-3.5" />
+                              )}
+                            </Button>
+                          ) : (
+                            <span className="text-muted-foreground text-xs">-</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

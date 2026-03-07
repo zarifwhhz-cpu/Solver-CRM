@@ -1,7 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertClientSchema, insertTransactionSchema } from "@shared/schema";
+import { db } from "./db";
+import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet } from "./googleSheets";
 import { z } from "zod";
 
@@ -258,13 +260,57 @@ export async function registerRoutes(
         const fullYear = yy.length === 2 ? `20${yy}` : yy;
         return `${dd.padStart(2, '0')}/${mm}/${fullYear}`;
       };
+      const extractNoteDateISO = (note: string): string => {
+        const m2 = note.match(/^(\d{1,2})\/(\d{2})\/(\d{2,4})\/cli-/);
+        if (!m2) return '0000-00-00';
+        const [, dd2, mm2, yy2] = m2;
+        const fy = yy2.length === 2 ? `20${yy2}` : yy2;
+        return `${fy}-${mm2}-${dd2.padStart(2, '0')}`;
+      };
       const enriched = history.map(t => ({
         ...t,
         date: extractNoteDate(t.paymentNote || '') || t.date,
         clientName: clientMap.get(t.clientId)?.name || "Unknown",
         clientCode: clientMap.get(t.clientId)?.clientId || 0,
+        googleSheetId: clientMap.get(t.clientId)?.googleSheetId || null,
       }));
+      enriched.sort((a, b) => {
+        const da = extractNoteDateISO(a.paymentNote || '');
+        const db = extractNoteDateISO(b.paymentNote || '');
+        if (da !== db) return db.localeCompare(da);
+        return b.id - a.id;
+      });
       res.json({ payments: enriched, count: enriched.length, totalAmount: totalAmount.toFixed(2) });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/bulk-payments/push-to-sheet", async (req, res) => {
+    try {
+      const { transactionId } = req.body;
+      if (!transactionId) return res.status(400).json({ message: "Transaction ID required" });
+
+      const allTxns = await db.select().from(transactionsTable).where(eq(transactionsTable.id, transactionId));
+      const txn = allTxns[0];
+      if (!txn) return res.status(404).json({ message: "Transaction not found" });
+
+      const client = await storage.getClient(txn.clientId);
+      if (!client || !client.googleSheetId) {
+        return res.status(400).json({ message: "Client has no linked Google Sheet" });
+      }
+
+      await appendToSheet(client.googleSheetId, {
+        date: txn.date || '',
+        bdtAmount: txn.bdtAmount || '0',
+        usdAmount: txn.usdAmount || '0',
+        platform: txn.platform || 'Facebook',
+        remainingBdt: txn.remainingBdt || '0',
+        platformSpend: txn.platformSpend || '0',
+        paymentNote: txn.paymentNote || '',
+      });
+
+      res.json({ success: true, message: `Pushed to ${client.name}'s Google Sheet` });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
