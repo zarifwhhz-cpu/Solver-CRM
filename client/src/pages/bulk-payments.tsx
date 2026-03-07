@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,7 +14,8 @@ import {
 } from "@/components/ui/table";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste } from "lucide-react";
+import { Upload, CheckCircle2, XCircle, AlertTriangle, Loader2, ClipboardPaste, History } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatBDT } from "@/lib/format";
 
 type PaymentResult = {
@@ -24,6 +25,16 @@ type PaymentResult = {
   date: string;
   status: string;
   error?: string;
+};
+
+type HistoryEntry = {
+  id: number;
+  clientId: number;
+  clientName: string;
+  clientCode: number;
+  date: string | null;
+  bdtAmount: string;
+  paymentNote: string | null;
 };
 
 type BulkResponse = {
@@ -42,6 +53,10 @@ export default function BulkPayments() {
   const [response, setResponse] = useState<BulkResponse | null>(null);
   const { toast } = useToast();
 
+  const { data: history, isLoading: historyLoading } = useQuery<HistoryEntry[]>({
+    queryKey: ["/api/bulk-payments/history"],
+  });
+
   const bulkMutation = useMutation({
     mutationFn: async (text: string) => {
       const res = await apiRequest("POST", "/api/bulk-payments", { notes: text });
@@ -51,6 +66,7 @@ export default function BulkPayments() {
       setResponse(data);
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/bulk-payments/history"] });
       toast({
         title: "Payments Processed",
         description: `${data.succeeded} succeeded, ${data.failed} failed out of ${data.processed} payments`,
@@ -321,6 +337,70 @@ export default function BulkPayments() {
           </CardContent>
         </Card>
       )}
+      <Card data-testid="card-history">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            <History className="w-5 h-5" />
+            Payment History
+            {history && (
+              <Badge variant="outline">{history.length} recent</Badge>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {historyLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : history && history.length > 0 ? (
+            <div className="border rounded-lg overflow-hidden">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Client</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Method</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Note</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {history.map((h) => {
+                    const methodMatch = h.paymentNote?.match(/lst-([^/]+)/);
+                    const method = methodMatch ? methodMatch[1] : "-";
+                    return (
+                      <TableRow key={h.id} data-testid={`row-history-${h.id}`}>
+                        <TableCell>
+                          <div>
+                            <span className="font-medium">{h.clientName}</span>
+                            <span className="text-muted-foreground ml-2 text-sm">#{h.clientCode}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">{h.date || "-"}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{method}</Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-medium text-green-600">
+                          +৳{h.bdtAmount}
+                        </TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground max-w-[200px] truncate">
+                          {h.paymentNote || "-"}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-8" data-testid="text-no-history">
+              No bulk payments recorded yet. Use the form above to process your first batch.
+            </p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { clients, transactions, type Client, type InsertClient, type Transaction, type InsertTransaction } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, like, desc } from "drizzle-orm";
 
 export interface IStorage {
   getClients(): Promise<Client[]>;
@@ -13,6 +13,7 @@ export interface IStorage {
   createTransaction(transaction: InsertTransaction): Promise<Transaction>;
   deleteTransaction(id: number): Promise<void>;
   deleteTransactionsByClientId(clientId: number): Promise<void>;
+  getBulkPaymentHistory(): Promise<Transaction[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -60,6 +61,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTransactionsByClientId(clientId: number): Promise<void> {
     await db.delete(transactions).where(eq(transactions.clientId, clientId));
+  }
+
+  async getBulkPaymentHistory(): Promise<Transaction[]> {
+    return await db.select().from(transactions)
+      .where(like(transactions.paymentNote, '%/cli-%/lst-%/pay-%'))
+      .orderBy(desc(transactions.id))
+      .limit(100);
   }
 }
 

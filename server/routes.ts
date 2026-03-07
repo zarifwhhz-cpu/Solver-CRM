@@ -253,6 +253,22 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/bulk-payments/history", async (_req, res) => {
+    try {
+      const allClients = await storage.getClients();
+      const clientMap = new Map(allClients.map(c => [c.id, c]));
+      const history = await storage.getBulkPaymentHistory();
+      const enriched = history.map(t => ({
+        ...t,
+        clientName: clientMap.get(t.clientId)?.name || "Unknown",
+        clientCode: clientMap.get(t.clientId)?.clientId || 0,
+      }));
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/bulk-payments", async (req, res) => {
     try {
       const { notes } = req.body;
