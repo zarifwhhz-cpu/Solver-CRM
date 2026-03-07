@@ -10,7 +10,7 @@ export const clients = pgTable("clients", {
   totalDue: text("total_due").notNull().default("0"),
   campaignDue: text("campaign_due").notNull().default("0"),
   status: text("status").notNull().default("Inactive"),
-  executive: text("executive").notNull(),
+  executive: text("executive").notNull().default(""),
   adsAccount: text("ads_account").notNull().default(""),
   googleSheetUrl: text("google_sheet_url"),
   googleSheetId: text("google_sheet_id"),

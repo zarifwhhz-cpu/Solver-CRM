@@ -54,7 +54,8 @@ export function extractSheetId(url: string): string | null {
 
 function cleanAmount(value: string): string {
   if (!value || value.trim() === '') return "0";
-  return value.replace(/[৳$,\s]/g, '').trim() || "0";
+  const cleaned = value.replace(/[৳$,\s]/g, '').trim();
+  return cleaned || "0";
 }
 
 export async function readClientSheetData(spreadsheetId: string) {
@@ -99,7 +100,7 @@ export async function readMainSheetClients(spreadsheetId: string) {
   const sheets = await getUncachableGoogleSheetClient();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: 'A:I',
+    range: 'A:D',
   });
 
   const rows = response.data.values || [];
@@ -112,11 +113,13 @@ export async function readMainSheetClients(spreadsheetId: string) {
     status: string;
     executive: string;
     adsAccount: string;
+    googleSheetUrl: string | null;
+    googleSheetId: string | null;
   }> = [];
 
-  for (let i = 3; i < rows.length; i++) {
+  for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
-    if (!row || row.length < 7) continue;
+    if (!row || row.length < 2) continue;
 
     const clientIdRaw = parseInt(row[0]?.trim());
     if (isNaN(clientIdRaw)) continue;
@@ -124,14 +127,26 @@ export async function readMainSheetClients(spreadsheetId: string) {
     const name = row[1]?.trim() || '';
     if (!name) continue;
 
-    const balance = cleanAmount(row[3] || '');
-    const totalDue = cleanAmount(row[4] || '');
-    const campaignDue = cleanAmount(row[5] || '');
-    const status = row[6]?.trim() || 'Inactive';
-    const executive = row[7]?.trim() || '';
-    const adsAccount = row[8]?.trim() || '';
+    let googleSheetUrl: string | null = null;
+    let googleSheetId: string | null = null;
+    const rawUrl = (row[3] || '').trim().replace(/^-/, '');
+    if (rawUrl && rawUrl.includes('docs.google.com/spreadsheets')) {
+      googleSheetUrl = rawUrl;
+      googleSheetId = extractSheetId(rawUrl);
+    }
 
-    clients.push({ clientId: clientIdRaw, name, balance, totalDue, campaignDue, status, executive, adsAccount });
+    clients.push({
+      clientId: clientIdRaw,
+      name,
+      balance: "0",
+      totalDue: "0",
+      campaignDue: "0",
+      status: "Active",
+      executive: "",
+      adsAccount: "",
+      googleSheetUrl,
+      googleSheetId,
+    });
   }
 
   return clients;
