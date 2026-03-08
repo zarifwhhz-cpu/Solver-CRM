@@ -195,6 +195,55 @@ export async function readMainSheetClients(spreadsheetId: string) {
   return clients;
 }
 
+export async function deleteSheetRows(spreadsheetId: string, rowNumbers: number[]) {
+  const sheets = await getUncachableGoogleSheetClient();
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const pnlSheetName = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+  const pnlSheetMeta = meta.data.sheets?.find(s => s.properties?.title === pnlSheetName);
+  const sheetId = pnlSheetMeta?.properties?.sheetId || 0;
+
+  const sorted = [...rowNumbers].sort((a, b) => b - a);
+
+  const requests = sorted.map(row => ({
+    deleteDimension: {
+      range: {
+        sheetId,
+        dimension: 'ROWS',
+        startIndex: row - 1,
+        endIndex: row,
+      },
+    },
+  }));
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: { requests },
+  });
+
+  console.log(`[Sheet Cleanup] Deleted ${sorted.length} rows from '${pnlSheetName}': ${sorted.join(', ')}`);
+}
+
+export async function clearSheetRow(spreadsheetId: string, rowNumber: number) {
+  const sheets = await getUncachableGoogleSheetClient();
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `'${pnlSheet}'!A${rowNumber}:G${rowNumber}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [['', '', '', 'Facebook', '৳0.00', '৳0.00', '']],
+    },
+  });
+
+  console.log(`[Sheet Cleanup] Cleared row ${rowNumber} back to template`);
+}
+
 export async function appendToSheet(spreadsheetId: string, transaction: {
   date: string;
   bdtAmount: string;
@@ -222,27 +271,25 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
   const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
   console.log(`[Sheet Write] Target sheet tab: '${pnlSheet}' in spreadsheet: ${spreadsheetId}`);
 
-  const allData = await sheets.spreadsheets.values.get({
+  const colAData = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `'${pnlSheet}'!A1:G1000`,
+    range: `'${pnlSheet}'!A1:A1000`,
+    valueRenderOption: 'FORMATTED_VALUE',
   });
-  const allRows = allData.data.values || [];
-  console.log(`[Sheet Write] Sheet has ${allRows.length} rows total (A:G)`);
+  const colA = colAData.data.values || [];
+  console.log(`[Sheet Write] Column A returned ${colA.length} rows`);
 
-  let lastContentRow = 3;
-  for (let i = allRows.length - 1; i >= 3; i--) {
-    const row = allRows[i];
-    if (!row) continue;
-    const hasDate = row[0] && row[0].toString().trim();
-    const hasAmount = row[1] && cleanAmount(row[1]) !== '0';
-    const hasNote = row[6] && row[6].toString().trim();
-    if (hasDate || hasAmount || hasNote) {
-      lastContentRow = i + 1;
+  let lastDateRow = 3;
+  for (let i = colA.length - 1; i >= 3; i--) {
+    const cell = colA[i]?.[0]?.toString().trim();
+    if (cell && /\d/.test(cell)) {
+      lastDateRow = i + 1;
+      console.log(`[Sheet Write] Last date in col A at row ${lastDateRow}: "${cell}"`);
       break;
     }
   }
-  const targetRow = lastContentRow + 1;
-  console.log(`[Sheet Write] Last content row: ${lastContentRow}, writing to row: ${targetRow}`);
+  const targetRow = lastDateRow + 1;
+  console.log(`[Sheet Write] Writing to row: ${targetRow}`);
 
   const rowData = [
     transaction.date,

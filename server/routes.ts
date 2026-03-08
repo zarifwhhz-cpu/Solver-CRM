@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow } from "./googleSheets";
 import { z } from "zod";
 
 const importSheetSchema = z.object({
@@ -446,6 +446,49 @@ export async function registerRoutes(
         holdCount,
       });
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/sheet-cleanup", async (req, res) => {
+    try {
+      const { spreadsheetId, deleteRows, clearRows, readRows } = req.body;
+      if (!spreadsheetId) return res.status(400).json({ message: "spreadsheetId required" });
+
+      const results: string[] = [];
+      let readData: Record<number, any[]> = {};
+
+      if (readRows && Array.isArray(readRows) && readRows.length > 0) {
+        const { getUncachableGoogleSheetClient } = await import("./googleSheets");
+        const sheets = await getUncachableGoogleSheetClient();
+        const meta = await sheets.spreadsheets.get({ spreadsheetId });
+        const sheetNames = meta.data.sheets?.map((s: any) => s.properties?.title) || [];
+        const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+        for (const row of readRows) {
+          const resp = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: `'${pnlSheet}'!A${row}:G${row}`,
+            valueRenderOption: 'FORMATTED_VALUE',
+          });
+          readData[row] = resp.data.values?.[0] || [];
+        }
+      }
+
+      if (deleteRows && Array.isArray(deleteRows) && deleteRows.length > 0) {
+        await deleteSheetRows(spreadsheetId, deleteRows);
+        results.push(`Deleted ${deleteRows.length} rows: ${deleteRows.join(', ')}`);
+      }
+
+      if (clearRows && Array.isArray(clearRows) && clearRows.length > 0) {
+        for (const row of clearRows) {
+          await clearSheetRow(spreadsheetId, row);
+        }
+        results.push(`Cleared ${clearRows.length} rows: ${clearRows.join(', ')}`);
+      }
+
+      res.json({ success: true, results, readData });
+    } catch (error: any) {
+      console.error("[Sheet Cleanup] Error:", error.message);
       res.status(500).json({ message: error.message });
     }
   });
