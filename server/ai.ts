@@ -462,7 +462,13 @@ export async function processAIChat(
 
     if (!response.ok) {
       const errText = await response.text();
-      throw new Error(`AI API error (${response.status}): ${errText}`);
+      if (response.status === 429 || errText.includes("RESOURCE_EXHAUSTED") || errText.includes("rate") || errText.includes("quota")) {
+        throw new Error("Rate limit reached. Please wait a moment and try again, or switch to a different AI provider/model in Settings.");
+      }
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("Invalid API key. Please check your key in Settings.");
+      }
+      throw new Error(`AI provider error (${response.status}). Try again or switch provider in Settings.`);
     }
 
     const data = await response.json();
