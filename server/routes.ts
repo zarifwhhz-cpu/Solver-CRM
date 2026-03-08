@@ -2,9 +2,10 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable } from "@shared/schema";
+import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow } from "./googleSheets";
+import { processAIChat } from "./ai";
 import { z } from "zod";
 
 const importSheetSchema = z.object({
@@ -455,6 +456,75 @@ export async function registerRoutes(
         holdCount,
       });
     } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ai/settings", async (_req, res) => {
+    try {
+      const settings = await db.select().from(aiSettings);
+      if (settings.length === 0) {
+        return res.json({ configured: false });
+      }
+      const s = settings[0];
+      return res.json({
+        configured: true,
+        provider: s.provider,
+        model: s.model,
+        hasApiKey: !!s.apiKey,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ai/settings", async (req, res) => {
+    try {
+      const { provider, apiKey, model } = req.body;
+      if (!provider) {
+        return res.status(400).json({ message: "Provider is required" });
+      }
+
+      const existing = await db.select().from(aiSettings);
+      if (existing.length > 0) {
+        const updateData: any = { provider, model: model || null };
+        if (apiKey) updateData.apiKey = apiKey;
+        await db.update(aiSettings).set(updateData).where(eq(aiSettings.id, existing[0].id));
+      } else {
+        if (!apiKey) {
+          return res.status(400).json({ message: "API key is required for initial setup" });
+        }
+        await db.insert(aiSettings).values({ provider, apiKey, model: model || null });
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const { messages } = req.body;
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ message: "Messages array is required" });
+      }
+
+      const settings = await db.select().from(aiSettings);
+      if (settings.length === 0 || !settings[0].apiKey) {
+        return res.status(400).json({ message: "AI is not configured. Please add your API key in settings." });
+      }
+
+      const config = {
+        provider: settings[0].provider,
+        apiKey: settings[0].apiKey,
+        model: settings[0].model || undefined,
+      };
+
+      const result = await processAIChat(messages, config);
+      res.json(result);
+    } catch (error: any) {
+      console.error("[AI Chat Error]", error.message);
       res.status(500).json({ message: error.message });
     }
   });

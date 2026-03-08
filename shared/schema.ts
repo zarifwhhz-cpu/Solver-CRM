@@ -45,3 +45,14 @@ export const users = pgTable("users", {
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export const aiSettings = pgTable("ai_settings", {
+  id: serial("id").primaryKey(),
+  provider: text("provider").notNull().default("deepseek"),
+  apiKey: text("api_key").notNull(),
+  model: text("model"),
+});
+
+export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: true });
+export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
+export type AiSettings = typeof aiSettings.$inferSelect;

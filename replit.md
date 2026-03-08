@@ -8,6 +8,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - **Backend**: Express.js + TypeScript
 - **Database**: PostgreSQL via Drizzle ORM
 - **Integration**: Google Sheets API (dual-mode: Google Service Account or Replit Connector)
+- **AI**: Multi-provider AI assistant (DeepSeek, Gemini, OpenAI, OpenRouter) with tool calling
 
 ## Key Features
 1. **Client Management**: CRUD operations for ad campaign clients with status tracking (Active/Inactive/Hold)
@@ -16,6 +17,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 4. **Bulk Import**: Import clients from a main Google Sheet
 5. **Dashboard**: Summary stats with filtering by status, search, and executive
 6. **Bulk Payments**: Parse WhatsApp-format payment notes, process multiple payments with duplicate detection
+7. **AI Assistant**: Natural language interface to query data, add payments, sync sheets, update statuses — supports DeepSeek, Gemini, OpenAI, and OpenRouter
 
 ## Production / Deployment
 - **Build**: `npm run build` → `dist/index.cjs` (server) + `dist/public/` (frontend)
@@ -46,16 +48,21 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `GET /api/bulk-payments/history` - Get payment history with optional date filtering
 - `POST /api/sheet-cleanup` - Admin: read/delete/clear specific sheet rows
 - `GET /api/stats` - Dashboard statistics
+- `GET /api/ai/settings` - Get AI provider configuration (no sensitive data exposed)
+- `POST /api/ai/settings` - Save AI provider, API key, and model selection
+- `POST /api/ai/chat` - Send messages to AI; supports tool calling for data queries and actions
 
 ## File Structure
 - `shared/schema.ts` - Database schema (Drizzle)
 - `server/db.ts` - Database connection
 - `server/googleSheets.ts` - Google Sheets integration (Service Account + Replit Connector dual-mode)
+- `server/ai.ts` - AI assistant with tool-calling (multi-provider: DeepSeek, Gemini, OpenAI, OpenRouter)
 - `server/storage.ts` - Data access layer
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Main dashboard
 - `client/src/pages/client-detail.tsx` - Client detail with transactions
 - `client/src/pages/bulk-payments.tsx` - Bulk payment upload from WhatsApp notes
+- `client/src/pages/ai-assistant.tsx` - AI chat interface with provider settings
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar
 - `client/src/lib/format.ts` - Currency formatting utilities
 

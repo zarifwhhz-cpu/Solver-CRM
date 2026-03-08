@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import Dashboard from "@/pages/dashboard";
 import ClientDetail from "@/pages/client-detail";
 import BulkPayments from "@/pages/bulk-payments";
+import AIAssistant from "@/pages/ai-assistant";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/clients/:id" component={ClientDetail} />
       <Route path="/bulk-payments" component={BulkPayments} />
+      <Route path="/ai-assistant" component={AIAssistant} />
       <Route component={NotFound} />
     </Switch>
   );
