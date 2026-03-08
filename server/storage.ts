@@ -14,6 +14,7 @@ export interface IStorage {
   deleteTransaction(id: number): Promise<void>;
   deleteTransactionsByClientId(clientId: number): Promise<void>;
   getBulkPaymentHistory(fromDate?: string, toDate?: string): Promise<Transaction[]>;
+  findTransactionByNote(clientId: number, paymentNote: string): Promise<Transaction | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -61,6 +62,12 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTransactionsByClientId(clientId: number): Promise<void> {
     await db.delete(transactions).where(eq(transactions.clientId, clientId));
+  }
+
+  async findTransactionByNote(clientId: number, paymentNote: string): Promise<Transaction | undefined> {
+    const result = await db.select().from(transactions)
+      .where(and(eq(transactions.clientId, clientId), eq(transactions.paymentNote, paymentNote)));
+    return result[0];
   }
 
   async getBulkPaymentHistory(fromDate?: string, toDate?: string): Promise<Transaction[]> {

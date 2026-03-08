@@ -357,6 +357,14 @@ export async function registerRoutes(
 
         try {
           const paymentNote = `${payment.date.replace(/20(\d{2})$/, '$1')}/cli-${payment.clientId}/lst-${payment.method}/pay-${payment.amount}`;
+
+          const existing = await storage.findTransactionByNote(client.id, paymentNote);
+          if (existing) {
+            results.push({ clientId: payment.clientId, name: client.name, amount: payment.amount, date: payment.date, status: "skipped", error: `Duplicate: payment already exists (ID: ${existing.id})` });
+            console.log(`Skipped duplicate: ${client.name} (${payment.clientId}) ${paymentNote}`);
+            continue;
+          }
+
           const txnData = {
             clientId: client.id,
             date: payment.date,
@@ -404,8 +412,9 @@ export async function registerRoutes(
       const succeeded = results.filter(r => r.status === "success").length;
       const partial = results.filter(r => r.status === "partial").length;
       const failedCount = results.filter(r => r.status === "error").length;
+      const skipped = results.filter(r => r.status === "skipped").length;
 
-      res.json({ success: true, totalLines: lines.length, processed: results.length, succeeded, partial, failed: failedCount, unparsed: failed, results });
+      res.json({ success: true, totalLines: lines.length, processed: results.length, succeeded, partial, failed: failedCount, skipped, unparsed: failed, results });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

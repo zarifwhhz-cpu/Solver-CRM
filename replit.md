@@ -29,10 +29,13 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `GET /api/clients/:id/transactions` - Get client transactions
 - `POST /api/clients/:id/transactions` - Add transaction (syncs to Google Sheet)
 - `DELETE /api/transactions/:id` - Delete transaction
-- `POST /api/clients/:id/sync` - Sync from Google Sheet
+- `POST /api/clients/:id/sync` - Sync from Google Sheet (deletes all DB transactions, reimports fresh)
 - `POST /api/import-sheet` - Bulk import clients from main sheet
-- `POST /api/sync-all` - Sync all client sheets (parallel batches of 3 with 4s delay for rate limiting)
-- `POST /api/bulk-payments` - Parse WhatsApp payment notes, create transactions, update balances, sync to sheets
+- `POST /api/sync-all` - Sync all client sheets (parallel batches of 2 with 5s delay for rate limiting)
+- `POST /api/bulk-payments` - Parse WhatsApp payment notes, create transactions, update balances, sync to sheets. Has duplicate detection (checks paymentNote match before creating).
+- `POST /api/bulk-payments/push-to-sheet` - Push a single transaction to its client's Google Sheet
+- `GET /api/bulk-payments/history` - Get payment history with optional date filtering
+- `POST /api/sheet-cleanup` - Admin: read/delete/clear specific sheet rows
 - `GET /api/stats` - Dashboard statistics
 
 ## File Structure
@@ -53,3 +56,6 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - Client sheet row 2 cell D2 contains the BDT balance (read during sync instead of recalculating from transactions)
 - Main sheet follows format: Client ID | Name | GO- | Balance | TotalDue | CampaignDue | Status | Executive | AdsAccount
 - Dashboard Balance column (index 3) is read during import and used as balance/totalDue
+- **Sheet Write Rules**: appendToSheet writes ONLY columns A-D and G (plain numbers, no currency symbols). Columns E-F (Remaining, Burnt) are left untouched to preserve sheet formulas.
+- **Row Targeting**: Scans column A bottom-up for last date row, writes to next row (fills pre-filled template rows)
+- **Sheet Cleanup**: deleteSheetRows removes rows by number, clearSheetRow resets to template format

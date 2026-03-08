@@ -53,6 +53,7 @@ type BulkResponse = {
   succeeded: number;
   partial: number;
   failed: number;
+  skipped: number;
   unparsed: Array<{ line: string; error: string }>;
   results: PaymentResult[];
 };
@@ -300,6 +301,12 @@ export default function BulkPayments() {
                   {response.partial} partial (DB saved, sheet failed)
                 </span>
               )}
+              {response.skipped > 0 && (
+                <span className="flex items-center gap-1 text-blue-600">
+                  <AlertTriangle className="w-4 h-4" />
+                  {response.skipped} skipped (duplicates)
+                </span>
+              )}
               {response.failed > 0 && (
                 <span className="flex items-center gap-1 text-red-600">
                   <XCircle className="w-4 h-4" />
@@ -347,6 +354,11 @@ export default function BulkPayments() {
                           <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
                             <AlertTriangle className="w-3 h-3 mr-1" />
                             Partial
+                          </Badge>
+                        ) : r.status === "skipped" ? (
+                          <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            Duplicate
                           </Badge>
                         ) : (
                           <Badge variant="destructive">
