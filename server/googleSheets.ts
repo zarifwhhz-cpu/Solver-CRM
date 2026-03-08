@@ -220,35 +220,61 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
   const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
   const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+  console.log(`[Sheet Write] Target sheet tab: '${pnlSheet}' in spreadsheet: ${spreadsheetId}`);
 
-  const colA = await sheets.spreadsheets.values.get({
+  const allData = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: `'${pnlSheet}'!A:A`,
+    range: `'${pnlSheet}'!A1:G1000`,
   });
-  const allRows = colA.data.values || [];
-  let lastDataRow = 3;
+  const allRows = allData.data.values || [];
+  console.log(`[Sheet Write] Sheet has ${allRows.length} rows total (A:G)`);
+
+  let lastContentRow = 3;
   for (let i = allRows.length - 1; i >= 3; i--) {
-    if (allRows[i] && allRows[i][0] && allRows[i][0].trim()) {
-      lastDataRow = i + 1;
+    const row = allRows[i];
+    if (!row) continue;
+    const hasDate = row[0] && row[0].toString().trim();
+    const hasAmount = row[1] && cleanAmount(row[1]) !== '0';
+    const hasNote = row[6] && row[6].toString().trim();
+    if (hasDate || hasAmount || hasNote) {
+      lastContentRow = i + 1;
       break;
     }
   }
-  const targetRow = lastDataRow + 1;
+  const targetRow = lastContentRow + 1;
+  console.log(`[Sheet Write] Last content row: ${lastContentRow}, writing to row: ${targetRow}`);
 
-  await sheets.spreadsheets.values.update({
+  const rowData = [
+    transaction.date,
+    fmtBdt(transaction.bdtAmount),
+    fmtUsd(transaction.usdAmount),
+    transaction.platform,
+    fmtBdt(transaction.remainingBdt),
+    fmtBdt(transaction.platformSpend),
+    transaction.paymentNote,
+  ];
+
+  const writeRange = `'${pnlSheet}'!A${targetRow}:G${targetRow}`;
+  console.log(`[Sheet Write] Writing to ${writeRange}: ${JSON.stringify(rowData)}`);
+
+  const result = await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: `'${pnlSheet}'!A${targetRow}:G${targetRow}`,
+    range: writeRange,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[
-        transaction.date,
-        fmtBdt(transaction.bdtAmount),
-        fmtUsd(transaction.usdAmount),
-        transaction.platform,
-        fmtBdt(transaction.remainingBdt),
-        fmtBdt(transaction.platformSpend),
-        transaction.paymentNote,
-      ]],
+      values: [rowData],
     },
   });
+
+  console.log(`[Sheet Write] Result: ${result.data.updatedCells} cells updated at ${result.data.updatedRange}`);
+
+  const verify = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: `'${pnlSheet}'!A${targetRow}:G${targetRow}`,
+  });
+  const written = verify.data.values?.[0];
+  if (!written || !written[0]) {
+    throw new Error(`Verification failed: data not found at row ${targetRow} after write`);
+  }
+  console.log(`[Sheet Write] Verified: row ${targetRow} contains: ${written[0]} | ${written[1] || ''} | ... | ${written[6] || ''}`);
 }
