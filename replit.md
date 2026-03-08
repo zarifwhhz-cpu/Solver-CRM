@@ -7,7 +7,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - **Frontend**: React + TypeScript + Vite + TailwindCSS + shadcn/ui
 - **Backend**: Express.js + TypeScript
 - **Database**: PostgreSQL via Drizzle ORM
-- **Integration**: Google Sheets API via Replit connector
+- **Integration**: Google Sheets API (dual-mode: Google Service Account or Replit Connector)
 
 ## Key Features
 1. **Client Management**: CRUD operations for ad campaign clients with status tracking (Active/Inactive/Hold)
@@ -15,6 +15,15 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 3. **Google Sheet Sync**: Two-way sync - read transactions from client sheets, write new transactions back
 4. **Bulk Import**: Import clients from a main Google Sheet
 5. **Dashboard**: Summary stats with filtering by status, search, and executive
+6. **Bulk Payments**: Parse WhatsApp-format payment notes, process multiple payments with duplicate detection
+
+## Production / Deployment
+- **Build**: `npm run build` → `dist/index.cjs` (server) + `dist/public/` (frontend)
+- **Start**: `NODE_ENV=production node dist/index.cjs`
+- **Docker**: `docker build -t ads-crm . && docker run -p 5000:5000 --env-file .env ads-crm`
+- **Google Sheets Auth**: Set `GOOGLE_SERVICE_ACCOUNT_JSON` env var with service account JSON for self-hosting. On Replit, uses the connector automatically.
+- **Files**: `.env.example`, `Dockerfile`, `.dockerignore`, `README.md`, `.gitignore` all present
+- **Vite Config**: Clean — no Replit-specific plugins. Uses React, path aliases only.
 
 ## Data Model
 - `clients`: id, clientId (custom), name, balance, totalDue, campaignDue, status, executive, adsAccount, googleSheetUrl, googleSheetId
@@ -41,7 +50,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 ## File Structure
 - `shared/schema.ts` - Database schema (Drizzle)
 - `server/db.ts` - Database connection
-- `server/googleSheets.ts` - Google Sheets integration
+- `server/googleSheets.ts` - Google Sheets integration (Service Account + Replit Connector dual-mode)
 - `server/storage.ts` - Data access layer
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Main dashboard
@@ -51,7 +60,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `client/src/lib/format.ts` - Currency formatting utilities
 
 ## Google Sheets Integration
-- Uses Replit Google Sheets connector (OAuth)
+- Dual authentication: Google Service Account (via `GOOGLE_SERVICE_ACCOUNT_JSON` env var) for self-hosting, or Replit Connector for Replit deployment
 - Client sheets follow format: Date | BDT Amount | USD Amount | Platform | Remaining | Spend | Payment Note
 - Client sheet row 2 cell D2 contains the BDT balance (read during sync instead of recalculating from transactions)
 - Main sheet follows format: Client ID | Name | GO- | Balance | TotalDue | CampaignDue | Status | Executive | AdsAccount

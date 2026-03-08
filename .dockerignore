@@ -1,0 +1,7 @@
+node_modules
+dist
+.env
+.replit
+replit.md
+attached_assets
+*.log
