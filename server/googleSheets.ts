@@ -255,15 +255,10 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
 }) {
   const sheets = await getUncachableGoogleSheetClient();
 
-  const fmtBdt = (val: string) => {
+  const toNum = (val: string) => {
     const n = parseFloat(val);
     if (isNaN(n) || n === 0) return '';
-    return `৳${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  };
-  const fmtUsd = (val: string) => {
-    const n = parseFloat(val);
-    if (isNaN(n) || n === 0) return '';
-    return `$${Math.abs(n).toFixed(2)}`;
+    return n.toString();
   };
 
   const meta = await sheets.spreadsheets.get({ spreadsheetId });
@@ -291,29 +286,36 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
   const targetRow = lastDateRow + 1;
   console.log(`[Sheet Write] Writing to row: ${targetRow}`);
 
-  const rowData = [
+  const abcdData = [
     transaction.date,
-    fmtBdt(transaction.bdtAmount),
-    fmtUsd(transaction.usdAmount),
+    toNum(transaction.bdtAmount),
+    toNum(transaction.usdAmount),
     transaction.platform,
-    fmtBdt(transaction.remainingBdt),
-    fmtBdt(transaction.platformSpend),
-    transaction.paymentNote,
   ];
 
-  const writeRange = `'${pnlSheet}'!A${targetRow}:G${targetRow}`;
-  console.log(`[Sheet Write] Writing to ${writeRange}: ${JSON.stringify(rowData)}`);
+  const writeRangeAD = `'${pnlSheet}'!A${targetRow}:D${targetRow}`;
+  console.log(`[Sheet Write] Writing A-D to ${writeRangeAD}: ${JSON.stringify(abcdData)}`);
 
-  const result = await sheets.spreadsheets.values.update({
+  await sheets.spreadsheets.values.update({
     spreadsheetId,
-    range: writeRange,
+    range: writeRangeAD,
     valueInputOption: 'USER_ENTERED',
-    requestBody: {
-      values: [rowData],
-    },
+    requestBody: { values: [abcdData] },
   });
 
-  console.log(`[Sheet Write] Result: ${result.data.updatedCells} cells updated at ${result.data.updatedRange}`);
+  if (transaction.paymentNote) {
+    const writeRangeG = `'${pnlSheet}'!G${targetRow}`;
+    console.log(`[Sheet Write] Writing G to ${writeRangeG}: "${transaction.paymentNote}"`);
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: writeRangeG,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[transaction.paymentNote]] },
+    });
+  }
+
+  console.log(`[Sheet Write] Done. Wrote to row ${targetRow}, columns A-D and G (skipped E-F to preserve formulas)`);
 
   const verify = await sheets.spreadsheets.values.get({
     spreadsheetId,
