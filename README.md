@@ -10,13 +10,17 @@ A full-stack web CRM for managing advertising agency clients. Tracks client bala
 - **Bulk Payments** — Paste WhatsApp-format payment notes to process multiple payments at once with automatic sheet sync
 - **Duplicate Prevention** — Automatic detection of duplicate payment entries
 - **Dashboard Stats** — Total balance, outstanding, campaign due, client counts by status
+- **AI Assistant** — Natural language chat to query data, add payments, sync sheets, update statuses (supports DeepSeek, Gemini, OpenAI, OpenRouter)
+- **Ad Platform Integration** — Connect Facebook/Meta, Google Ads, and TikTok ad accounts to view campaigns and performance metrics
+- **Facebook OAuth Login** — One-click login to auto-discover and connect all Facebook ad accounts
+- **Responsive Design** — Works on desktop, tablet, and mobile
 
 ## Tech Stack
 
 - **Frontend**: React + TypeScript + Vite + TailwindCSS + shadcn/ui
 - **Backend**: Express.js + TypeScript
 - **Database**: PostgreSQL via Drizzle ORM
-- **Integration**: Google Sheets API (Service Account or Replit Connector)
+- **Integration**: Google Sheets API (Service Account)
 
 ## Prerequisites
 
@@ -47,6 +51,10 @@ Required variables:
 - `SESSION_SECRET` — Random string for session encryption
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — Google Service Account credentials (JSON string)
 
+Optional variables:
+- `FACEBOOK_APP_ID` — Facebook App ID for OAuth login
+- `FACEBOOK_APP_SECRET` — Facebook App Secret for OAuth login
+
 ### 3. Database Setup
 
 Push the schema to your database:
@@ -63,7 +71,21 @@ npm run db:push
 4. Paste the JSON key content into `GOOGLE_SERVICE_ACCOUNT_JSON` in your `.env` file
 5. Share your Google Sheets with the service account email (found in the JSON key as `client_email`)
 
-### 5. Run
+### 5. Facebook Login Setup (optional)
+
+1. Go to [Meta for Developers](https://developers.facebook.com)
+2. Create an app → select "Create & manage ads with Marketing API"
+3. Go to **Settings → Basic** to get your App ID and App Secret
+4. Add **Facebook Login** product and set the redirect URI to: `https://yourdomain.com/api/facebook/callback`
+5. Add `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` to your `.env`
+
+### 6. Custom Logo (optional)
+
+Place your logo file at `client/public/logo.png`. It will appear in the sidebar. If no logo is provided, a default icon is shown.
+
+Replace the favicon at `client/public/favicon.png` with your own.
+
+### 7. Run
 
 **Development:**
 ```bash
@@ -87,6 +109,16 @@ docker build -t ads-crm .
 docker run -p 5000:5000 --env-file .env ads-crm
 ```
 
+### Heroku
+
+```bash
+heroku create your-app-name
+heroku addons:create heroku-postgresql:essential-0
+heroku config:set SESSION_SECRET=your_secret_here
+heroku config:set GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+git push heroku main
+```
+
 ### Railway / Render / Fly.io
 
 1. Connect your GitHub repo
@@ -99,24 +131,28 @@ docker run -p 5000:5000 --env-file .env ads-crm
 1. Install Node.js 20+ and PostgreSQL
 2. Clone the repo and run `npm install`
 3. Set up `.env` with your database URL and credentials
-4. Run `npm run build && npm start`
-5. Use a reverse proxy (nginx/caddy) to serve on port 80/443
+4. Run `npm run db:push` to create database tables
+5. Run `npm run build && npm start`
+6. Use a reverse proxy (nginx/caddy) to serve on port 80/443
 
 ## Project Structure
 
 ```
 ├── client/                 # React frontend
 │   ├── src/
-│   │   ├── pages/          # Dashboard, Client Detail, Bulk Payments
+│   │   ├── pages/          # Dashboard, Client Detail, Bulk Payments, AI Assistant, Ad Accounts
 │   │   ├── components/     # Sidebar, UI components (shadcn)
 │   │   ├── hooks/          # Custom hooks
 │   │   └── lib/            # Utilities (formatting, query client)
+│   ├── public/             # Static assets (favicon, logo)
 │   └── index.html
 ├── server/                 # Express backend
 │   ├── index.ts            # Entry point
 │   ├── routes.ts           # API routes
 │   ├── storage.ts          # Data access layer
 │   ├── googleSheets.ts     # Google Sheets integration
+│   ├── ai.ts               # AI assistant with tool-calling
+│   ├── adPlatforms.ts      # Facebook, Google Ads, TikTok API integrations
 │   ├── db.ts               # Database connection
 │   ├── vite.ts             # Dev server setup
 │   └── static.ts           # Production static file serving
@@ -124,7 +160,9 @@ docker run -p 5000:5000 --env-file .env ads-crm
 │   └── schema.ts           # Database schema (Drizzle)
 ├── script/
 │   └── build.ts            # Production build script
-└── migrations/             # Database migrations
+├── Dockerfile              # Docker container config
+├── Procfile                # Heroku process file
+└── .env.example            # Environment variable template
 ```
 
 ## API Endpoints
@@ -145,6 +183,16 @@ docker run -p 5000:5000 --env-file .env ads-crm
 | POST | `/api/bulk-payments/push-to-sheet` | Push transaction to sheet |
 | GET | `/api/stats` | Dashboard statistics |
 | POST | `/api/import-sheet` | Import clients from main sheet |
+| GET | `/api/ai/settings` | Get AI provider config |
+| POST | `/api/ai/settings` | Save AI provider settings |
+| POST | `/api/ai/chat` | Send message to AI assistant |
+| GET | `/api/ad-accounts` | List connected ad accounts |
+| POST | `/api/ad-accounts` | Add ad account |
+| POST | `/api/ad-accounts/discover` | Auto-discover accounts from token |
+| DELETE | `/api/ad-accounts/:id` | Remove ad account |
+| GET | `/api/ad-accounts/:id/campaigns` | Fetch live campaign data |
+| GET | `/api/facebook/login` | Start Facebook OAuth login |
+| GET | `/api/facebook/callback` | Facebook OAuth callback |
 
 ## Bulk Payment Format
 

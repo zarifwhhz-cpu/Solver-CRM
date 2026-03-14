@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { LayoutDashboard, Megaphone, Upload, Bot, BarChart3 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -21,14 +22,24 @@ const items = [
 
 export function AppSidebar() {
   const [location] = useLocation();
+  const [logoError, setLogoError] = useState(false);
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary text-primary-foreground">
-            <Megaphone className="w-5 h-5" />
-          </div>
+          {!logoError ? (
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="w-9 h-9 rounded-md object-contain"
+              onError={() => setLogoError(true)}
+            />
+          ) : (
+            <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary text-primary-foreground">
+              <Megaphone className="w-5 h-5" />
+            </div>
+          )}
           <div>
             <h1 className="text-sm font-bold leading-tight" data-testid="text-app-title">Ads CRM</h1>
             <p className="text-xs text-muted-foreground leading-tight">Campaign Manager</p>

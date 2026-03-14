@@ -16,7 +16,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/migrations ./migrations
+COPY drizzle.config.ts ./
+COPY shared ./shared
 
 EXPOSE 5000
 

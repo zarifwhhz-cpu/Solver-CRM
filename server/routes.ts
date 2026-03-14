@@ -24,7 +24,7 @@ setInterval(() => {
 
 function getBaseUrl(req: any): string {
   const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
-  const host = req.headers["x-forwarded-host"] || req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || "localhost:5000";
   return `${proto}://${host}`;
 }
 
