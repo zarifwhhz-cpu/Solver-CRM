@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,9 +11,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, Search, Filter, Loader2, AlertCircle, ArrowUpDown, ChevronDown, AlertTriangle, Calendar } from "lucide-react";
+import { RefreshCw, Search, Filter, Loader2, AlertCircle, ArrowUpDown, ChevronDown, AlertTriangle } from "lucide-react";
 import { SiFacebook, SiGoogleads, SiTiktok } from "react-icons/si";
 import { queryClient } from "@/lib/queryClient";
+import { DateRangePicker } from "@/components/date-range-picker";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 
 interface AdAccountSafe {
   id: number;
@@ -89,8 +92,7 @@ export default function Campaigns() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
   const [clientCodeFilter, setClientCodeFilter] = useState("all");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [activeTab, setActiveTab] = useState("all");
@@ -209,17 +211,12 @@ export default function Campaigns() {
       const code = parseInt(clientCodeFilter);
       result = result.filter(c => c.clientCode === code);
     }
-    if (dateFrom) {
+    if (dateRange?.from) {
+      const fromStr = format(dateRange.from, "yyyy-MM-dd");
+      const toStr = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : fromStr;
       result = result.filter(c => {
         if (!c.startDate) return false;
-        return c.startDate >= dateFrom;
-      });
-    }
-    if (dateTo) {
-      result = result.filter(c => {
-        const d = c.startDate || c.endDate;
-        if (!d) return false;
-        return d <= dateTo;
+        return c.startDate >= fromStr && c.startDate <= toStr;
       });
     }
 
@@ -246,20 +243,15 @@ export default function Campaigns() {
     return result;
   };
 
-  const filteredAll = useMemo(() => applyFilters(campaignsWithCodes), [campaignsWithCodes, search, statusFilter, platformFilter, clientCodeFilter, dateFrom, dateTo, sortField, sortDir]);
-  const filteredMatched = useMemo(() => applyFilters(matchedCampaigns), [matchedCampaigns, search, statusFilter, platformFilter, clientCodeFilter, dateFrom, dateTo, sortField, sortDir]);
-  const filteredActionNeeded = useMemo(() => applyFilters(actionNeeded), [actionNeeded, search, statusFilter, platformFilter, dateFrom, dateTo, sortField, sortDir]);
+  const filteredAll = useMemo(() => applyFilters(campaignsWithCodes), [campaignsWithCodes, search, statusFilter, platformFilter, clientCodeFilter, dateRange, sortField, sortDir]);
+  const filteredMatched = useMemo(() => applyFilters(matchedCampaigns), [matchedCampaigns, search, statusFilter, platformFilter, clientCodeFilter, dateRange, sortField, sortDir]);
+  const filteredActionNeeded = useMemo(() => applyFilters(actionNeeded), [actionNeeded, search, statusFilter, platformFilter, dateRange, sortField, sortDir]);
 
   const currentList = activeTab === "all" ? filteredAll : activeTab === "matched" ? filteredMatched : filteredActionNeeded;
   const totalSpend = useMemo(() =>
     currentList.reduce((sum, c) => sum + parseFloat(c.spend || "0"), 0),
     [currentList]
   );
-
-  const clearDateFilters = () => {
-    setDateFrom("");
-    setDateTo("");
-  };
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <TableHead
@@ -447,30 +439,7 @@ export default function Campaigns() {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Date:</span>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              className="w-[150px] h-9"
-              data-testid="input-date-from"
-            />
-            <span className="text-sm text-muted-foreground">to</span>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              className="w-[150px] h-9"
-              data-testid="input-date-to"
-            />
-            {(dateFrom || dateTo) && (
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearDateFilters} data-testid="button-clear-dates">
-                Clear
-              </Button>
-            )}
-          </div>
+          <DateRangePicker dateRange={dateRange} onDateRangeChange={setDateRange} />
         </div>
 
         {data?.errors && data.errors.length > 0 && (
