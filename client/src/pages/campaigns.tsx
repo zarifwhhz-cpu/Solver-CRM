@@ -215,7 +215,7 @@ export default function Campaigns() {
       const fromStr = format(dateRange.from, "yyyy-MM-dd");
       const toStr = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : fromStr;
       result = result.filter(c => {
-        if (!c.startDate) return false;
+        if (!c.startDate) return true;
         return c.startDate >= fromStr && c.startDate <= toStr;
       });
     }

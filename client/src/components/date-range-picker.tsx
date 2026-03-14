@@ -37,7 +37,7 @@ interface DateRangePickerProps {
 export function DateRangePicker({ dateRange, onDateRangeChange }: DateRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [pendingRange, setPendingRange] = useState<DateRange | undefined>(dateRange);
-  const [activePreset, setActivePreset] = useState<string | null>("Maximum");
+  const [activePreset, setActivePreset] = useState<string | null>(() => dateRange?.from ? null : "Maximum");
 
   const handlePresetClick = (preset: DatePreset) => {
     const range = preset.getValue();
