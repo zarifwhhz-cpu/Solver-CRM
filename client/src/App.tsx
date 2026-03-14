@@ -10,6 +10,7 @@ import ClientDetail from "@/pages/client-detail";
 import BulkPayments from "@/pages/bulk-payments";
 import AIAssistant from "@/pages/ai-assistant";
 import AdAccounts from "@/pages/ad-accounts";
+import Campaigns from "@/pages/campaigns";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/bulk-payments" component={BulkPayments} />
       <Route path="/ai-assistant" component={AIAssistant} />
       <Route path="/ad-accounts" component={AdAccounts} />
+      <Route path="/campaigns" component={Campaigns} />
       <Route component={NotFound} />
     </Switch>
   );

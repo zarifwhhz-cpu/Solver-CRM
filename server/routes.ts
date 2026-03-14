@@ -784,6 +784,52 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/campaigns", async (req, res) => {
+    try {
+      const accountIds = req.query.accounts
+        ? String(req.query.accounts).split(",").map(Number).filter(n => Number.isFinite(n) && n > 0)
+        : [];
+      let accounts;
+      if (accountIds.length > 0) {
+        const { inArray } = await import("drizzle-orm");
+        accounts = await db.select().from(adAccounts).where(inArray(adAccounts.id, accountIds));
+      } else {
+        accounts = await db.select().from(adAccounts);
+      }
+
+      const allCampaigns: Array<{
+        id: string; name: string; status: string; objective?: string;
+        spend?: string; impressions?: string; clicks?: string; ctr?: string; cpc?: string;
+        accountId: number; accountName: string; platform: string;
+      }> = [];
+
+      const errors: Array<{ accountId: number; accountName: string; error: string }> = [];
+
+      for (const acct of accounts) {
+        try {
+          const data = await fetchCampaigns(acct.platform, acct.accessToken, acct.accountId);
+          if (data.account.name && data.account.name !== acct.accountName) {
+            await db.update(adAccounts).set({ accountName: data.account.name }).where(eq(adAccounts.id, acct.id));
+          }
+          for (const c of data.campaigns) {
+            allCampaigns.push({
+              ...c,
+              accountId: acct.id,
+              accountName: data.account.name || acct.accountName || acct.accountId,
+              platform: acct.platform,
+            });
+          }
+        } catch (err: any) {
+          errors.push({ accountId: acct.id, accountName: acct.accountName || acct.accountId, error: err.message });
+        }
+      }
+
+      res.json({ campaigns: allCampaigns, errors, totalAccounts: accounts.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.post("/api/sheet-cleanup", async (req, res) => {
     try {
       const { spreadsheetId, deleteRows, clearRows, readRows } = req.body;

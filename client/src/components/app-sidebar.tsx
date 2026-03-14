@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { LayoutDashboard, Megaphone, Upload, Bot, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Megaphone, Upload, Bot, BarChart3, ListFilter } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -17,6 +17,7 @@ const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Bulk Payments", url: "/bulk-payments", icon: Upload },
   { title: "Ad Accounts", url: "/ad-accounts", icon: BarChart3 },
+  { title: "Campaigns", url: "/campaigns", icon: ListFilter },
   { title: "AI Assistant", url: "/ai-assistant", icon: Bot },
 ];
 
