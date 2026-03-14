@@ -56,3 +56,16 @@ export const aiSettings = pgTable("ai_settings", {
 export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: true });
 export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
 export type AiSettings = typeof aiSettings.$inferSelect;
+
+export const adAccounts = pgTable("ad_accounts", {
+  id: serial("id").primaryKey(),
+  platform: text("platform").notNull(),
+  accountId: text("account_id").notNull(),
+  accountName: text("account_name").notNull().default(""),
+  accessToken: text("access_token").notNull(),
+  status: text("status").notNull().default("connected"),
+});
+
+export const insertAdAccountSchema = createInsertSchema(adAccounts).omit({ id: true });
+export type InsertAdAccount = z.infer<typeof insertAdAccountSchema>;
+export type AdAccount = typeof adAccounts.$inferSelect;

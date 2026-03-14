@@ -18,6 +18,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 5. **Dashboard**: Summary stats with filtering by status, search, and executive
 6. **Bulk Payments**: Parse WhatsApp-format payment notes, process multiple payments with duplicate detection
 7. **AI Assistant**: Natural language interface to query data, add payments, sync sheets, update statuses — supports DeepSeek, Gemini, OpenAI, and OpenRouter
+8. **Ad Platform Integration**: Connect Facebook/Meta, Google Ads, and TikTok ad accounts to view campaigns, spend, and performance metrics live
 
 ## Production / Deployment
 - **Build**: `npm run build` → `dist/index.cjs` (server) + `dist/public/` (frontend)
@@ -51,18 +52,25 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `GET /api/ai/settings` - Get AI provider configuration (no sensitive data exposed)
 - `POST /api/ai/settings` - Save AI provider, API key, and model selection
 - `POST /api/ai/chat` - Send messages to AI; supports tool calling for data queries and actions
+- `GET /api/ad-accounts` - List connected ad platform accounts (tokens not exposed)
+- `POST /api/ad-accounts` - Add a new ad platform account (facebook/google/tiktok)
+- `PUT /api/ad-accounts/:id` - Update account name, token, or status
+- `DELETE /api/ad-accounts/:id` - Remove an ad account
+- `GET /api/ad-accounts/:id/campaigns` - Fetch live campaign data from the platform API
 
 ## File Structure
 - `shared/schema.ts` - Database schema (Drizzle)
 - `server/db.ts` - Database connection
 - `server/googleSheets.ts` - Google Sheets integration (Service Account + Replit Connector dual-mode)
 - `server/ai.ts` - AI assistant with tool-calling (multi-provider: DeepSeek, Gemini, OpenAI, OpenRouter)
+- `server/adPlatforms.ts` - Facebook, Google Ads, TikTok API integrations for campaign data
 - `server/storage.ts` - Data access layer
 - `server/routes.ts` - API routes
 - `client/src/pages/dashboard.tsx` - Main dashboard
 - `client/src/pages/client-detail.tsx` - Client detail with transactions
 - `client/src/pages/bulk-payments.tsx` - Bulk payment upload from WhatsApp notes
 - `client/src/pages/ai-assistant.tsx` - AI chat interface with provider settings
+- `client/src/pages/ad-accounts.tsx` - Ad platform account management and campaign viewer
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar
 - `client/src/lib/format.ts` - Currency formatting utilities
 

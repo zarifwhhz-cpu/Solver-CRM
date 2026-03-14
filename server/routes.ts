@@ -2,10 +2,11 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings } from "@shared/schema";
+import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow } from "./googleSheets";
 import { processAIChat } from "./ai";
+import { fetchCampaigns } from "./adPlatforms";
 import { z } from "zod";
 
 const importSheetSchema = z.object({
@@ -526,6 +527,98 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[AI Chat Error]", error.message);
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ad-accounts", async (_req, res) => {
+    try {
+      const accounts = await db.select().from(adAccounts);
+      const safe = accounts.map(a => ({
+        id: a.id,
+        platform: a.platform,
+        accountId: a.accountId,
+        accountName: a.accountName,
+        status: a.status,
+        hasToken: !!a.accessToken,
+      }));
+      res.json(safe);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ad-accounts", async (req, res) => {
+    try {
+      const { platform, accountId, accountName, accessToken } = req.body;
+      if (!platform || !accountId || !accessToken) {
+        return res.status(400).json({ message: "Platform, account ID, and access token are required" });
+      }
+      if (!["facebook", "google", "tiktok"].includes(platform)) {
+        return res.status(400).json({ message: "Platform must be facebook, google, or tiktok" });
+      }
+
+      const result = await db.insert(adAccounts).values({
+        platform,
+        accountId,
+        accountName: accountName || "",
+        accessToken,
+        status: "connected",
+      }).returning();
+
+      res.status(201).json({ id: result[0].id, platform, accountId, accountName: result[0].accountName, status: "connected" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/ad-accounts/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { accountName, accessToken, status } = req.body;
+      const updateData: any = {};
+      if (accountName !== undefined) updateData.accountName = accountName;
+      if (accessToken) updateData.accessToken = accessToken;
+      if (status) updateData.status = status;
+
+      const result = await db.update(adAccounts).set(updateData).where(eq(adAccounts.id, id)).returning();
+      if (result.length === 0) return res.status(404).json({ message: "Account not found" });
+
+      res.json({ id: result[0].id, platform: result[0].platform, accountId: result[0].accountId, accountName: result[0].accountName, status: result[0].status });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/ad-accounts/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      await db.delete(adAccounts).where(eq(adAccounts.id, id));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/ad-accounts/:id/campaigns", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const accounts = await db.select().from(adAccounts).where(eq(adAccounts.id, id));
+      if (accounts.length === 0) return res.status(404).json({ message: "Account not found" });
+
+      const acct = accounts[0];
+      const data = await fetchCampaigns(acct.platform, acct.accessToken, acct.accountId);
+
+      if (data.account.name && data.account.name !== acct.accountName) {
+        await db.update(adAccounts).set({ accountName: data.account.name }).where(eq(adAccounts.id, id));
+      }
+
+      res.json(data);
+    } catch (error: any) {
+      const message = error.message || "Failed to fetch campaigns";
+      if (message.includes("token") || message.includes("auth") || message.includes("401") || message.includes("403")) {
+        await db.update(adAccounts).set({ status: "error" }).where(eq(adAccounts.id, parseInt(req.params.id)));
+      }
+      res.status(500).json({ message });
     }
   });
 

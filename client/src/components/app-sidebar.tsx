@@ -1,4 +1,4 @@
-import { LayoutDashboard, Megaphone, Upload, Bot } from "lucide-react";
+import { LayoutDashboard, Megaphone, Upload, Bot, BarChart3 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -15,6 +15,7 @@ import {
 const items = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Bulk Payments", url: "/bulk-payments", icon: Upload },
+  { title: "Ad Accounts", url: "/ad-accounts", icon: BarChart3 },
   { title: "AI Assistant", url: "/ai-assistant", icon: Bot },
 ];
 
