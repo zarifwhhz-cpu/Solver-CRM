@@ -800,6 +800,7 @@ export async function registerRoutes(
       const allCampaigns: Array<{
         id: string; name: string; status: string; objective?: string;
         spend?: string; impressions?: string; clicks?: string; ctr?: string; cpc?: string;
+        startDate?: string; endDate?: string;
         accountId: number; accountName: string; platform: string;
       }> = [];
 

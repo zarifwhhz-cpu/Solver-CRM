@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,7 +10,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RefreshCw, Search, Filter, Loader2, AlertCircle, ArrowUpDown, ChevronDown } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { RefreshCw, Search, Filter, Loader2, AlertCircle, ArrowUpDown, ChevronDown, AlertTriangle, Calendar } from "lucide-react";
 import { SiFacebook, SiGoogleads, SiTiktok } from "react-icons/si";
 import { queryClient } from "@/lib/queryClient";
 
@@ -23,6 +24,13 @@ interface AdAccountSafe {
   hasToken: boolean;
 }
 
+interface ClientBasic {
+  id: number;
+  clientId: number;
+  name: string;
+  status: string;
+}
+
 interface CampaignRow {
   id: string;
   name: string;
@@ -33,6 +41,8 @@ interface CampaignRow {
   clicks?: string;
   ctr?: string;
   cpc?: string;
+  startDate?: string;
+  endDate?: string;
   accountId: number;
   accountName: string;
   platform: string;
@@ -61,7 +71,16 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant="outline">{status}</Badge>;
 }
 
-type SortField = "name" | "status" | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "accountName";
+function extractClientCode(campaignName: string, clientCodes: number[]): number | null {
+  for (const code of clientCodes) {
+    const codeStr = String(code);
+    const regex = new RegExp(`(?:^|[^0-9])${codeStr}(?:$|[^0-9])`);
+    if (regex.test(campaignName)) return code;
+  }
+  return null;
+}
+
+type SortField = "name" | "status" | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "accountName" | "startDate" | "clientCode";
 type SortDir = "asc" | "desc";
 
 export default function Campaigns() {
@@ -69,12 +88,32 @@ export default function Campaigns() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [platformFilter, setPlatformFilter] = useState("all");
+  const [clientCodeFilter, setClientCodeFilter] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [sortField, setSortField] = useState<SortField>("name");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [activeTab, setActiveTab] = useState("all");
 
   const { data: accounts, isError: accountsError } = useQuery<AdAccountSafe[]>({
     queryKey: ["/api/ad-accounts"],
   });
+
+  const { data: clients } = useQuery<ClientBasic[]>({
+    queryKey: ["/api/clients"],
+  });
+
+  const clientCodes = useMemo(() => {
+    if (!clients) return [];
+    return clients.map(c => c.clientId).filter(Boolean).sort((a, b) => b - a);
+  }, [clients]);
+
+  const clientCodeMap = useMemo(() => {
+    if (!clients) return new Map<number, string>();
+    const map = new Map<number, string>();
+    clients.forEach(c => map.set(c.clientId, c.name));
+    return map;
+  }, [clients]);
 
   const queryString = selectedAccountIds.length > 0 ? `?accounts=${selectedAccountIds.join(",")}` : "";
   const { data, isLoading, isFetching, isError: campaignsError, error: campaignsErrorMsg, refetch } = useQuery<CampaignsResponse>({
@@ -126,27 +165,65 @@ export default function Campaigns() {
     return [...new Set(data.campaigns.map(c => c.status))].sort();
   }, [data?.campaigns]);
 
-  const accountNames = useMemo(() => {
+  const campaignsWithCodes = useMemo(() => {
     if (!data?.campaigns) return [];
-    return [...new Set(data.campaigns.map(c => c.accountName))].sort();
-  }, [data?.campaigns]);
+    return data.campaigns.map(c => ({
+      ...c,
+      clientCode: extractClientCode(c.name, clientCodes),
+    }));
+  }, [data?.campaigns, clientCodes]);
 
-  const filtered = useMemo(() => {
-    if (!data?.campaigns) return [];
-    let list = data.campaigns;
+  const actionNeeded = useMemo(() => {
+    return campaignsWithCodes.filter(c => c.clientCode === null);
+  }, [campaignsWithCodes]);
+
+  const matchedCampaigns = useMemo(() => {
+    return campaignsWithCodes.filter(c => c.clientCode !== null);
+  }, [campaignsWithCodes]);
+
+  const usedClientCodes = useMemo(() => {
+    const codes = new Set<number>();
+    matchedCampaigns.forEach(c => { if (c.clientCode) codes.add(c.clientCode); });
+    return [...codes].sort((a, b) => a - b);
+  }, [matchedCampaigns]);
+
+  const applyFilters = (list: (CampaignRow & { clientCode: number | null })[]) => {
+    let result = list;
 
     if (search) {
       const q = search.toLowerCase();
-      list = list.filter(c => c.name.toLowerCase().includes(q) || c.accountName.toLowerCase().includes(q) || c.objective?.toLowerCase().includes(q));
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.accountName.toLowerCase().includes(q) ||
+        c.objective?.toLowerCase().includes(q) ||
+        (c.clientCode && clientCodeMap.get(c.clientCode)?.toLowerCase().includes(q))
+      );
     }
     if (statusFilter !== "all") {
-      list = list.filter(c => c.status.toUpperCase() === statusFilter.toUpperCase());
+      result = result.filter(c => c.status.toUpperCase() === statusFilter.toUpperCase());
     }
     if (platformFilter !== "all") {
-      list = list.filter(c => c.platform === platformFilter);
+      result = result.filter(c => c.platform === platformFilter);
+    }
+    if (clientCodeFilter !== "all") {
+      const code = parseInt(clientCodeFilter);
+      result = result.filter(c => c.clientCode === code);
+    }
+    if (dateFrom) {
+      result = result.filter(c => {
+        if (!c.startDate) return false;
+        return c.startDate >= dateFrom;
+      });
+    }
+    if (dateTo) {
+      result = result.filter(c => {
+        const d = c.startDate || c.endDate;
+        if (!d) return false;
+        return d <= dateTo;
+      });
     }
 
-    list = [...list].sort((a, b) => {
+    result = [...result].sort((a, b) => {
       let aVal: any, bVal: any;
       switch (sortField) {
         case "name": aVal = a.name.toLowerCase(); bVal = b.name.toLowerCase(); break;
@@ -157,6 +234,8 @@ export default function Campaigns() {
         case "clicks": aVal = parseInt(a.clicks || "0"); bVal = parseInt(b.clicks || "0"); break;
         case "ctr": aVal = parseFloat(a.ctr || "0"); bVal = parseFloat(b.ctr || "0"); break;
         case "cpc": aVal = parseFloat(a.cpc || "0"); bVal = parseFloat(b.cpc || "0"); break;
+        case "startDate": aVal = a.startDate || ""; bVal = b.startDate || ""; break;
+        case "clientCode": aVal = a.clientCode || 0; bVal = b.clientCode || 0; break;
         default: aVal = a.name; bVal = b.name;
       }
       if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
@@ -164,13 +243,23 @@ export default function Campaigns() {
       return 0;
     });
 
-    return list;
-  }, [data?.campaigns, search, statusFilter, platformFilter, sortField, sortDir]);
+    return result;
+  };
 
+  const filteredAll = useMemo(() => applyFilters(campaignsWithCodes), [campaignsWithCodes, search, statusFilter, platformFilter, clientCodeFilter, dateFrom, dateTo, sortField, sortDir]);
+  const filteredMatched = useMemo(() => applyFilters(matchedCampaigns), [matchedCampaigns, search, statusFilter, platformFilter, clientCodeFilter, dateFrom, dateTo, sortField, sortDir]);
+  const filteredActionNeeded = useMemo(() => applyFilters(actionNeeded), [actionNeeded, search, statusFilter, platformFilter, dateFrom, dateTo, sortField, sortDir]);
+
+  const currentList = activeTab === "all" ? filteredAll : activeTab === "matched" ? filteredMatched : filteredActionNeeded;
   const totalSpend = useMemo(() =>
-    filtered.reduce((sum, c) => sum + parseFloat(c.spend || "0"), 0),
-    [filtered]
+    currentList.reduce((sum, c) => sum + parseFloat(c.spend || "0"), 0),
+    [currentList]
   );
+
+  const clearDateFilters = () => {
+    setDateFrom("");
+    setDateTo("");
+  };
 
   const SortHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
     <TableHead
@@ -182,6 +271,63 @@ export default function Campaigns() {
         <ArrowUpDown className={`w-3 h-3 ${sortField === field ? "text-foreground" : "text-muted-foreground/50"}`} />
       </div>
     </TableHead>
+  );
+
+  const CampaignTable = ({ campaigns }: { campaigns: (CampaignRow & { clientCode: number | null })[] }) => (
+    <div className="border rounded-lg">
+      <ScrollArea className="w-full">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <SortHeader field="name">Campaign</SortHeader>
+              <SortHeader field="clientCode">Client</SortHeader>
+              <SortHeader field="status">Status</SortHeader>
+              <SortHeader field="startDate">Date</SortHeader>
+              <SortHeader field="accountName">Account</SortHeader>
+              <SortHeader field="spend"><div className="text-right w-full">Spend</div></SortHeader>
+              <SortHeader field="impressions"><div className="text-right w-full">Impr.</div></SortHeader>
+              <SortHeader field="clicks"><div className="text-right w-full">Clicks</div></SortHeader>
+              <SortHeader field="ctr"><div className="text-right w-full">CTR</div></SortHeader>
+              <SortHeader field="cpc"><div className="text-right w-full">CPC</div></SortHeader>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {campaigns.map((c, i) => (
+              <TableRow key={`${c.id}-${c.accountId}-${i}`} data-testid={`row-campaign-${c.id}`}>
+                <TableCell className="font-medium max-w-[200px]">
+                  <span className="truncate block">{c.name}</span>
+                </TableCell>
+                <TableCell>
+                  {c.clientCode ? (
+                    <div className="flex flex-col">
+                      <Badge variant="outline" className="text-xs w-fit">{c.clientCode}</Badge>
+                      <span className="text-xs text-muted-foreground truncate max-w-[100px]">{clientCodeMap.get(c.clientCode) || ""}</span>
+                    </div>
+                  ) : (
+                    <Badge variant="destructive" className="text-xs">No code</Badge>
+                  )}
+                </TableCell>
+                <TableCell><StatusBadge status={c.status} /></TableCell>
+                <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                  {c.startDate || "-"}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <PlatformIcon platform={c.platform} className="w-3.5 h-3.5" />
+                    <span className="text-sm truncate max-w-[120px]">{c.accountName}</span>
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">{c.spend ? `$${parseFloat(c.spend).toLocaleString()}` : "-"}</TableCell>
+                <TableCell className="text-right">{c.impressions ? parseInt(c.impressions).toLocaleString() : "-"}</TableCell>
+                <TableCell className="text-right">{c.clicks ? parseInt(c.clicks).toLocaleString() : "-"}</TableCell>
+                <TableCell className="text-right">{c.ctr ? `${c.ctr}%` : "-"}</TableCell>
+                <TableCell className="text-right">{c.cpc ? `$${c.cpc}` : "-"}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </ScrollArea>
+    </div>
   );
 
   return (
@@ -208,11 +354,11 @@ export default function Campaigns() {
           </Button>
         </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="relative flex-1 min-w-[200px] max-w-sm">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search campaigns..."
+              placeholder="Search campaigns or client..."
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="pl-9"
@@ -222,7 +368,7 @@ export default function Campaigns() {
 
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-1" data-testid="button-account-filter">
+              <Button variant="outline" size="sm" className="gap-1 h-9" data-testid="button-account-filter">
                 <Filter className="w-3.5 h-3.5" />
                 Accounts
                 {selectedAccountIds.length > 0 && selectedAccountIds.length < (accounts?.length || 0) && (
@@ -261,8 +407,22 @@ export default function Campaigns() {
             </PopoverContent>
           </Popover>
 
+          <Select value={clientCodeFilter} onValueChange={setClientCodeFilter}>
+            <SelectTrigger className="w-[170px] h-9" data-testid="select-client-filter">
+              <SelectValue placeholder="Client" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All clients</SelectItem>
+              {usedClientCodes.map(code => (
+                <SelectItem key={code} value={String(code)}>
+                  {code} - {clientCodeMap.get(code) || "Unknown"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[140px]" data-testid="select-status-filter">
+            <SelectTrigger className="w-[130px] h-9" data-testid="select-status-filter">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
@@ -274,7 +434,7 @@ export default function Campaigns() {
           </Select>
 
           <Select value={platformFilter} onValueChange={setPlatformFilter}>
-            <SelectTrigger className="w-[150px]" data-testid="select-platform-filter">
+            <SelectTrigger className="w-[140px] h-9" data-testid="select-platform-filter">
               <SelectValue placeholder="Platform" />
             </SelectTrigger>
             <SelectContent>
@@ -284,6 +444,33 @@ export default function Campaigns() {
               <SelectItem value="tiktok">TikTok</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Date:</span>
+            <Input
+              type="date"
+              value={dateFrom}
+              onChange={e => setDateFrom(e.target.value)}
+              className="w-[150px] h-9"
+              data-testid="input-date-from"
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={e => setDateTo(e.target.value)}
+              className="w-[150px] h-9"
+              data-testid="input-date-to"
+            />
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={clearDateFilters} data-testid="button-clear-dates">
+                Clear
+              </Button>
+            )}
+          </div>
         </div>
 
         {data?.errors && data.errors.length > 0 && (
@@ -297,12 +484,6 @@ export default function Campaigns() {
             ))}
           </div>
         )}
-
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span data-testid="text-campaign-count">{filtered.length} campaign{filtered.length !== 1 ? "s" : ""}</span>
-          <span>Total spend: ${totalSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-          {data && <span>from {data.totalAccounts} account{data.totalAccounts !== 1 ? "s" : ""}</span>}
-        </div>
 
         {(accountsError || campaignsError) ? (
           <Card>
@@ -339,53 +520,92 @@ export default function Campaigns() {
               </div>
             </CardContent>
           </Card>
-        ) : filtered.length === 0 && !isFetching ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
-              <Search className="w-8 h-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">No campaigns match your filters</p>
-            </CardContent>
-          </Card>
         ) : (
-          <div className="border rounded-lg">
-            <ScrollArea className="w-full">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <SortHeader field="name">Campaign</SortHeader>
-                    <SortHeader field="status">Status</SortHeader>
-                    <TableHead>Objective</TableHead>
-                    <SortHeader field="accountName">Account</SortHeader>
-                    <SortHeader field="spend"><div className="text-right w-full">Spend</div></SortHeader>
-                    <SortHeader field="impressions"><div className="text-right w-full">Impressions</div></SortHeader>
-                    <SortHeader field="clicks"><div className="text-right w-full">Clicks</div></SortHeader>
-                    <SortHeader field="ctr"><div className="text-right w-full">CTR</div></SortHeader>
-                    <SortHeader field="cpc"><div className="text-right w-full">CPC</div></SortHeader>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map((c, i) => (
-                    <TableRow key={`${c.id}-${c.accountId}-${i}`} data-testid={`row-campaign-${c.id}`}>
-                      <TableCell className="font-medium max-w-[220px] truncate">{c.name}</TableCell>
-                      <TableCell><StatusBadge status={c.status} /></TableCell>
-                      <TableCell className="text-sm text-muted-foreground max-w-[120px] truncate">{c.objective || "-"}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          <PlatformIcon platform={c.platform} className="w-3.5 h-3.5" />
-                          <span className="text-sm truncate max-w-[140px]">{c.accountName}</span>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <div className="flex items-center justify-between">
+              <TabsList data-testid="tabs-campaign-view">
+                <TabsTrigger value="all" data-testid="tab-all">
+                  All ({campaignsWithCodes.length})
+                </TabsTrigger>
+                <TabsTrigger value="matched" data-testid="tab-matched">
+                  With Client ({matchedCampaigns.length})
+                </TabsTrigger>
+                <TabsTrigger value="action" data-testid="tab-action-needed" className="gap-1">
+                  {actionNeeded.length > 0 && <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />}
+                  Action Needed ({actionNeeded.length})
+                </TabsTrigger>
+              </TabsList>
+
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span data-testid="text-campaign-count">{currentList.length} campaign{currentList.length !== 1 ? "s" : ""}</span>
+                <span>Spend: ${totalSpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                {data && <span>{data.totalAccounts} acct{data.totalAccounts !== 1 ? "s" : ""}</span>}
+              </div>
+            </div>
+
+            <TabsContent value="all" className="mt-3">
+              {filteredAll.length === 0 && !isFetching ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+                    <Search className="w-8 h-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">No campaigns match your filters</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <CampaignTable campaigns={filteredAll} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="matched" className="mt-3">
+              {filteredMatched.length === 0 ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+                    <Search className="w-8 h-8 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">No matched campaigns found</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <CampaignTable campaigns={filteredMatched} />
+              )}
+            </TabsContent>
+
+            <TabsContent value="action" className="mt-3 space-y-3">
+              {actionNeeded.length > 0 && (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600" />
+                      <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        {actionNeeded.length} campaign{actionNeeded.length !== 1 ? "s" : ""} don't have a client code in their name.
+                        Update the campaign naming to include the client ID (e.g. 1396) for proper tracking.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+              {filteredActionNeeded.length === 0 ? (
+                <Card>
+                  <CardContent className="flex flex-col items-center justify-center py-12 gap-3">
+                    {actionNeeded.length === 0 ? (
+                      <>
+                        <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                          <span className="text-green-600 text-lg">✓</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-right">{c.spend ? `$${parseFloat(c.spend).toLocaleString()}` : "-"}</TableCell>
-                      <TableCell className="text-right">{c.impressions ? parseInt(c.impressions).toLocaleString() : "-"}</TableCell>
-                      <TableCell className="text-right">{c.clicks ? parseInt(c.clicks).toLocaleString() : "-"}</TableCell>
-                      <TableCell className="text-right">{c.ctr ? `${c.ctr}%` : "-"}</TableCell>
-                      <TableCell className="text-right">{c.cpc ? `$${c.cpc}` : "-"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ScrollArea>
-          </div>
+                        <p className="text-sm text-muted-foreground">All campaigns have valid client codes</p>
+                      </>
+                    ) : (
+                      <>
+                        <Search className="w-8 h-8 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">No action-needed campaigns match your filters</p>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              ) : (
+                <CampaignTable campaigns={filteredActionNeeded} />
+              )}
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </ScrollArea>
