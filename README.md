@@ -48,12 +48,12 @@ cp .env.example .env
 
 Required variables:
 - `DATABASE_URL` — PostgreSQL connection string
-- `SESSION_SECRET` — Random string for session encryption
 - `GOOGLE_SERVICE_ACCOUNT_JSON` — Google Service Account credentials (JSON string)
 
 Optional variables:
 - `FACEBOOK_APP_ID` — Facebook App ID for OAuth login
 - `FACEBOOK_APP_SECRET` — Facebook App Secret for OAuth login
+- `GOOGLE_ADS_DEVELOPER_TOKEN` — Google Ads developer token (for Google Ads campaign tracking)
 
 ### 3. Database Setup
 
@@ -106,7 +106,12 @@ The app runs on `http://localhost:5000` by default (configurable via `PORT`).
 
 ```bash
 docker build -t ads-crm .
-docker run -p 5000:5000 --env-file .env ads-crm
+
+# Run database migrations (one-time or on schema changes)
+docker run --rm --env-file .env ads-crm npx drizzle-kit push --force
+
+# Start the app
+docker run -d -p 5000:5000 --env-file .env ads-crm
 ```
 
 ### Heroku

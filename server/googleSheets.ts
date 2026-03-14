@@ -1,77 +1,22 @@
 import { google } from 'googleapis';
 
-let connectionSettings: any;
-
-function useServiceAccount(): boolean {
-  return !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-}
-
-function useReplitConnector(): boolean {
-  return !!process.env.REPLIT_CONNECTORS_HOSTNAME;
-}
-
-async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X-Replit-Token not found for repl/depl');
-  }
-
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=google-sheet',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X-Replit-Token': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  if (!connectionSettings || !connectionSettings.settings) {
-    throw new Error('Google Sheet not connected. Please connect your Google account in the integration settings.');
-  }
-
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings?.settings?.oauth?.credentials?.access_token;
-
-  if (!accessToken) {
-    throw new Error('Google Sheet access token not found. Please reconnect your Google account.');
-  }
-  return accessToken;
-}
-
 export async function getUncachableGoogleSheetClient() {
-  if (useServiceAccount()) {
-    let credentials;
-    try {
-      credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON!);
-    } catch (e) {
-      throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Ensure the entire service account key file content is set as the env var value.');
-    }
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-    });
-    const authClient = await auth.getClient();
-    return google.sheets({ version: 'v4', auth: authClient as any });
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set. Please set it with your Google service account key JSON.');
   }
 
-  if (useReplitConnector()) {
-    const accessToken = await getAccessToken();
-    const oauth2Client = new google.auth.OAuth2();
-    oauth2Client.setCredentials({ access_token: accessToken });
-    return google.sheets({ version: 'v4', auth: oauth2Client });
+  let credentials;
+  try {
+    credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+  } catch (e) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Ensure the entire service account key file content is set as the env var value.');
   }
-
-  throw new Error('No Google Sheets authentication configured. Set GOOGLE_SERVICE_ACCOUNT_JSON or use Replit Google Sheets connector.');
+  const auth = new google.auth.GoogleAuth({
+    credentials,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  });
+  const authClient = await auth.getClient();
+  return google.sheets({ version: 'v4', auth: authClient as any });
 }
 
 export function extractSheetId(url: string): string | null {
