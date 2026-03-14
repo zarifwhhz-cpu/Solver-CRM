@@ -43,6 +43,11 @@ import { z } from "zod";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Plus,
   Search,
   TrendingUp,
@@ -54,6 +59,7 @@ import {
   Users,
   ExternalLink,
   RefreshCw,
+  Filter,
 } from "lucide-react";
 import { formatBDT } from "@/lib/format";
 import type { Client } from "@shared/schema";
@@ -150,6 +156,9 @@ export default function Dashboard() {
   const [, navigate] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [numField, setNumField] = useState<"balance" | "totalDue" | "campaignDue">("balance");
+  const [numOp, setNumOp] = useState<"gt" | "lt" | "eq" | "gte" | "lte">("gt");
+  const [numValue, setNumValue] = useState("");
   const [showAddClient, setShowAddClient] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const { toast } = useToast();
@@ -237,13 +246,27 @@ export default function Dashboard() {
     },
   });
 
+  const numFilterActive = numValue !== "";
   const filteredClients = allClients.filter((client) => {
     const matchesSearch =
       client.name.toLowerCase().includes(search.toLowerCase()) ||
       String(client.clientId).includes(search) ||
       client.executive.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || client.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    if (!matchesSearch || !matchesStatus) return false;
+    if (numFilterActive) {
+      const val = parseFloat(client[numField] || "0");
+      const target = parseFloat(numValue);
+      if (isNaN(target)) return true;
+      switch (numOp) {
+        case "gt": return val > target;
+        case "lt": return val < target;
+        case "eq": return val === target;
+        case "gte": return val >= target;
+        case "lte": return val <= target;
+      }
+    }
+    return true;
   });
 
   return (
@@ -355,6 +378,57 @@ export default function Dashboard() {
                 </TabsTrigger>
               </TabsList>
             </Tabs>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant={numFilterActive ? "default" : "outline"} size="sm" data-testid="button-num-filter">
+                  <Filter className="w-4 h-4 mr-1" />
+                  {numFilterActive
+                    ? `${numField === "balance" ? "Balance" : numField === "totalDue" ? "Total Due" : "Campaign Due"} ${numOp === "gt" ? ">" : numOp === "lt" ? "<" : numOp === "eq" ? "=" : numOp === "gte" ? ">=" : "<="} ${numValue}`
+                    : "Value Filter"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-72 p-3" align="start">
+                <div className="space-y-3">
+                  <p className="text-sm font-medium">Filter by value</p>
+                  <Select value={numField} onValueChange={(v: any) => setNumField(v)}>
+                    <SelectTrigger data-testid="select-num-field">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="balance">Balance</SelectItem>
+                      <SelectItem value="totalDue">Total Due</SelectItem>
+                      <SelectItem value="campaignDue">Campaign Due</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex gap-2">
+                    <Select value={numOp} onValueChange={(v: any) => setNumOp(v)}>
+                      <SelectTrigger className="w-24" data-testid="select-num-op">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gt">&gt;</SelectItem>
+                        <SelectItem value="lt">&lt;</SelectItem>
+                        <SelectItem value="eq">=</SelectItem>
+                        <SelectItem value="gte">&gt;=</SelectItem>
+                        <SelectItem value="lte">&lt;=</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={numValue}
+                      onChange={(e) => setNumValue(e.target.value)}
+                      data-testid="input-num-value"
+                    />
+                  </div>
+                  {numFilterActive && (
+                    <Button variant="ghost" size="sm" className="w-full" onClick={() => setNumValue("")} data-testid="button-clear-num-filter">
+                      Clear filter
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           <p className="text-sm text-muted-foreground">
             <Users className="w-4 h-4 inline mr-1" />
