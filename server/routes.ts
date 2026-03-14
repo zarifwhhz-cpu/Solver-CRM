@@ -6,7 +6,7 @@ import { insertClientSchema, insertTransactionSchema, transactions as transactio
 import { eq } from "drizzle-orm";
 import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow } from "./googleSheets";
 import { processAIChat } from "./ai";
-import { fetchCampaigns } from "./adPlatforms";
+import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
 
 const importSheetSchema = z.object({
@@ -594,6 +594,61 @@ export async function registerRoutes(
       const id = parseInt(req.params.id);
       await db.delete(adAccounts).where(eq(adAccounts.id, id));
       res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/ad-accounts/discover", async (req, res) => {
+    try {
+      const { platform, accessToken } = req.body;
+      if (!platform || !accessToken) {
+        return res.status(400).json({ message: "Platform and access token are required" });
+      }
+
+      let discovered: Array<{ id: string; name: string; currency?: string; timezone?: string; status?: string; spend?: string }> = [];
+
+      if (platform === "facebook") {
+        discovered = await discoverFacebookAdAccounts(accessToken);
+      } else if (platform === "tiktok") {
+        discovered = await discoverTikTokAdvertisers(accessToken);
+      } else {
+        return res.status(400).json({ message: "Auto-discovery is available for Facebook and TikTok. For Google Ads, please add accounts manually." });
+      }
+
+      const existing = await db.select().from(adAccounts);
+      const existingIds = new Set(existing.map(a => a.accountId));
+      const newAccounts = discovered.filter(a => !existingIds.has(a.id));
+      const skipped = discovered.filter(a => existingIds.has(a.id));
+
+      const added = [];
+      for (const acct of newAccounts) {
+        const result = await db.insert(adAccounts).values({
+          platform,
+          accountId: acct.id,
+          accountName: acct.name,
+          accessToken,
+          status: "connected",
+        }).returning();
+        added.push({
+          id: result[0].id,
+          platform,
+          accountId: acct.id,
+          accountName: acct.name,
+          status: "connected",
+          currency: acct.currency,
+          spend: acct.spend,
+        });
+      }
+
+      res.json({
+        success: true,
+        discovered: discovered.length,
+        added: added.length,
+        skipped: skipped.length,
+        accounts: added,
+        skippedAccounts: skipped.map(a => ({ id: a.id, name: a.name })),
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

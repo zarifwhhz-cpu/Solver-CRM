@@ -257,6 +257,48 @@ export async function fetchTikTokCampaigns(accessToken: string, advertiserId: st
   return { account, campaigns };
 }
 
+export async function discoverFacebookAdAccounts(accessToken: string): Promise<AdAccountInfo[]> {
+  const res = await fetch(
+    `https://graph.facebook.com/v21.0/me/adaccounts?fields=name,currency,timezone_name,account_status,amount_spent&limit=100`,
+    { headers: { "Authorization": `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Facebook API error (${res.status}). Check your access token.`);
+  }
+  const data = await res.json();
+  const statusMap: Record<number, string> = { 1: "Active", 2: "Disabled", 3: "Unsettled", 7: "Pending Review", 9: "In Grace Period", 100: "Pending Closure", 101: "Closed" };
+  return (data.data || []).map((a: any) => ({
+    id: a.id,
+    name: a.name || a.id,
+    currency: a.currency || "USD",
+    timezone: a.timezone_name,
+    status: statusMap[a.account_status] || "Unknown",
+    spend: a.amount_spent ? (parseFloat(a.amount_spent) / 100).toFixed(2) : "0",
+  }));
+}
+
+export async function discoverTikTokAdvertisers(accessToken: string): Promise<AdAccountInfo[]> {
+  const res = await fetch(
+    `https://business-api.tiktok.com/open_api/v1.3/oauth2/advertiser/get/?app_id=0&secret=`,
+    { headers: { "Access-Token": accessToken } }
+  );
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`TikTok API error (${res.status}): ${errText}`);
+  }
+  const data = await res.json();
+  if (data.code !== 0) {
+    throw new Error(data.message || "TikTok API returned an error");
+  }
+  return (data.data?.list || []).map((a: any) => ({
+    id: String(a.advertiser_id),
+    name: a.advertiser_name || String(a.advertiser_id),
+    currency: "USD",
+    status: "Active",
+  }));
+}
+
 export async function fetchCampaigns(platform: string, accessToken: string, accountId: string) {
   switch (platform) {
     case "facebook":
