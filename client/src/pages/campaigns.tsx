@@ -117,9 +117,20 @@ export default function Campaigns() {
     return map;
   }, [clients]);
 
-  const queryString = selectedAccountIds.length > 0 ? `?accounts=${selectedAccountIds.join(",")}` : "";
+  const queryString = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedAccountIds.length > 0) params.set("accounts", selectedAccountIds.join(","));
+    if (dateRange?.from) {
+      params.set("since", format(dateRange.from, "yyyy-MM-dd"));
+      params.set("until", format(dateRange.to || dateRange.from, "yyyy-MM-dd"));
+    }
+    const qs = params.toString();
+    return qs ? `?${qs}` : "";
+  }, [selectedAccountIds, dateRange]);
+
+  const dateRangeKey = dateRange?.from ? `${format(dateRange.from, "yyyy-MM-dd")}_${format(dateRange.to || dateRange.from, "yyyy-MM-dd")}` : "all";
   const { data, isLoading, isFetching, isError: campaignsError, error: campaignsErrorMsg, refetch } = useQuery<CampaignsResponse>({
-    queryKey: ["/api/campaigns", selectedAccountIds.join(",")],
+    queryKey: ["/api/campaigns", selectedAccountIds.join(","), dateRangeKey],
     queryFn: async () => {
       const res = await fetch(`/api/campaigns${queryString}`);
       if (!res.ok) throw new Error("Failed to fetch campaigns");
@@ -211,15 +222,6 @@ export default function Campaigns() {
       const code = parseInt(clientCodeFilter);
       result = result.filter(c => c.clientCode === code);
     }
-    if (dateRange?.from) {
-      const fromStr = format(dateRange.from, "yyyy-MM-dd");
-      const toStr = dateRange.to ? format(dateRange.to, "yyyy-MM-dd") : fromStr;
-      result = result.filter(c => {
-        if (!c.startDate) return true;
-        return c.startDate >= fromStr && c.startDate <= toStr;
-      });
-    }
-
     result = [...result].sort((a, b) => {
       let aVal: any, bVal: any;
       switch (sortField) {
@@ -243,9 +245,9 @@ export default function Campaigns() {
     return result;
   };
 
-  const filteredAll = useMemo(() => applyFilters(campaignsWithCodes), [campaignsWithCodes, search, statusFilter, platformFilter, clientCodeFilter, dateRange, sortField, sortDir]);
-  const filteredMatched = useMemo(() => applyFilters(matchedCampaigns), [matchedCampaigns, search, statusFilter, platformFilter, clientCodeFilter, dateRange, sortField, sortDir]);
-  const filteredActionNeeded = useMemo(() => applyFilters(actionNeeded), [actionNeeded, search, statusFilter, platformFilter, dateRange, sortField, sortDir]);
+  const filteredAll = useMemo(() => applyFilters(campaignsWithCodes), [campaignsWithCodes, search, statusFilter, platformFilter, clientCodeFilter, sortField, sortDir]);
+  const filteredMatched = useMemo(() => applyFilters(matchedCampaigns), [matchedCampaigns, search, statusFilter, platformFilter, clientCodeFilter, sortField, sortDir]);
+  const filteredActionNeeded = useMemo(() => applyFilters(actionNeeded), [actionNeeded, search, statusFilter, platformFilter, sortField, sortDir]);
 
   const currentList = activeTab === "all" ? filteredAll : activeTab === "matched" ? filteredMatched : filteredActionNeeded;
   const totalSpend = useMemo(() =>

@@ -789,6 +789,9 @@ export async function registerRoutes(
       const accountIds = req.query.accounts
         ? String(req.query.accounts).split(",").map(Number).filter(n => Number.isFinite(n) && n > 0)
         : [];
+      const since = req.query.since ? String(req.query.since) : undefined;
+      const until = req.query.until ? String(req.query.until) : undefined;
+      const dateRange = since && until ? { since, until } : undefined;
       let accounts;
       if (accountIds.length > 0) {
         const { inArray } = await import("drizzle-orm");
@@ -808,7 +811,7 @@ export async function registerRoutes(
 
       for (const acct of accounts) {
         try {
-          const data = await fetchCampaigns(acct.platform, acct.accessToken, acct.accountId);
+          const data = await fetchCampaigns(acct.platform, acct.accessToken, acct.accountId, dateRange);
           if (data.account.name && data.account.name !== acct.accountName) {
             await db.update(adAccounts).set({ accountName: data.account.name }).where(eq(adAccounts.id, acct.id));
           }

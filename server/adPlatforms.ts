@@ -23,7 +23,7 @@ export interface AdAccountInfo {
   spend?: string;
 }
 
-export async function fetchFacebookCampaigns(accessToken: string, accountId: string): Promise<{ account: AdAccountInfo; campaigns: Campaign[] }> {
+export async function fetchFacebookCampaigns(accessToken: string, accountId: string, dateRange?: { since: string; until: string }): Promise<{ account: AdAccountInfo; campaigns: Campaign[] }> {
   const cleanId = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
 
   const acctRes = await fetch(
@@ -63,7 +63,7 @@ export async function fetchFacebookCampaigns(accessToken: string, accountId: str
     try {
       const insightsPromises = campaignIds.map(async (cId: string) => {
         const insRes = await fetch(
-          `https://graph.facebook.com/v21.0/${cId}/insights?fields=spend,impressions,clicks,ctr,cpc&date_preset=maximum`,
+          `https://graph.facebook.com/v21.0/${cId}/insights?fields=spend,impressions,clicks,ctr,cpc${dateRange ? `&time_range={"since":"${dateRange.since}","until":"${dateRange.until}"}` : "&date_preset=maximum"}`,
           { headers: { "Authorization": `Bearer ${accessToken}` } }
         );
         if (insRes.ok) {
@@ -299,10 +299,10 @@ export async function discoverTikTokAdvertisers(accessToken: string): Promise<Ad
   }));
 }
 
-export async function fetchCampaigns(platform: string, accessToken: string, accountId: string) {
+export async function fetchCampaigns(platform: string, accessToken: string, accountId: string, dateRange?: { since: string; until: string }) {
   switch (platform) {
     case "facebook":
-      return fetchFacebookCampaigns(accessToken, accountId);
+      return fetchFacebookCampaigns(accessToken, accountId, dateRange);
     case "google":
       return fetchGoogleAdsCampaigns(accessToken, accountId);
     case "tiktok":
