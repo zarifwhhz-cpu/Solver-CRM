@@ -40,3 +40,9 @@ waitForPort = 5000
 
 [agent]
 integrations = ["google-sheet:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+FACEBOOK_APP_ID = "2263228397534581"
+FACEBOOK_APP_SECRET = "593e28e5b351bbe7cd4e554c5f51e61b"
