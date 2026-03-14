@@ -267,7 +267,7 @@ export default function Dashboard() {
       }
     }
     return true;
-  });
+  }).sort((a, b) => a.clientId - b.clientId);
 
   return (
     <div className="flex flex-col h-full">
