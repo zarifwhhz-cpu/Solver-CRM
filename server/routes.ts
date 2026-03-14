@@ -8,15 +8,122 @@ import { extractSheetId, readClientSheetData, readMainSheetClients, appendToShee
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
+import crypto from "crypto";
 
 const importSheetSchema = z.object({
   url: z.string().url(),
 });
 
+const oauthStates = new Map<string, { timestamp: number }>();
+setInterval(() => {
+  const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+  for (const [key, val] of oauthStates) {
+    if (val.timestamp < fiveMinAgo) oauthStates.delete(key);
+  }
+}, 60_000);
+
+function getBaseUrl(req: any): string {
+  const proto = req.headers["x-forwarded-proto"] || req.protocol || "https";
+  const host = req.headers["x-forwarded-host"] || req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
+  return `${proto}://${host}`;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  app.get("/api/facebook/login", (req, res) => {
+    const appId = process.env.FACEBOOK_APP_ID;
+    if (!appId) {
+      return res.status(500).json({ message: "Facebook App ID not configured. Please set the FACEBOOK_APP_ID environment variable." });
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    oauthStates.set(state, { timestamp: Date.now() });
+
+    const baseUrl = getBaseUrl(req);
+    const redirectUri = `${baseUrl}/api/facebook/callback`;
+    const scope = "ads_read,ads_management,business_management";
+
+    const fbUrl = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}&response_type=code`;
+
+    res.json({ url: fbUrl });
+  });
+
+  app.get("/api/facebook/callback", async (req, res) => {
+    try {
+      const { code, state, error, error_description } = req.query;
+
+      if (error) {
+        return res.redirect(`/?fb_error=${encodeURIComponent(String(error_description || error))}`);
+      }
+
+      if (!code || !state || !oauthStates.has(String(state))) {
+        return res.redirect("/?fb_error=Invalid+or+expired+login+session.+Please+try+again.");
+      }
+
+      oauthStates.delete(String(state));
+
+      const appId = process.env.FACEBOOK_APP_ID;
+      const appSecret = process.env.FACEBOOK_APP_SECRET;
+      if (!appId || !appSecret) {
+        return res.redirect("/?fb_error=Facebook+App+credentials+not+configured.");
+      }
+
+      const baseUrl = getBaseUrl(req);
+      const redirectUri = `${baseUrl}/api/facebook/callback`;
+
+      const tokenRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?client_id=${appId}&redirect_uri=${encodeURIComponent(redirectUri)}&client_secret=${appSecret}&code=${code}`
+      );
+      const tokenData = await tokenRes.json() as any;
+
+      if (tokenData.error) {
+        return res.redirect(`/?fb_error=${encodeURIComponent(tokenData.error.message || "Failed to get access token")}`);
+      }
+
+      const shortToken = tokenData.access_token;
+
+      const longTokenRes = await fetch(
+        `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${shortToken}`
+      );
+      const longTokenData = await longTokenRes.json() as any;
+      const accessToken = longTokenData.access_token || shortToken;
+
+      const discovered = await discoverFacebookAdAccounts(accessToken);
+
+      const existing = await db.select().from(adAccounts);
+      const existingIds = new Set(existing.map(a => a.accountId));
+
+      let addedCount = 0;
+      for (const acct of discovered) {
+        if (!existingIds.has(acct.id)) {
+          await db.insert(adAccounts).values({
+            platform: "facebook",
+            accountId: acct.id,
+            accountName: acct.name,
+            accessToken,
+            status: "connected",
+          });
+          addedCount++;
+        } else {
+          await db.update(adAccounts)
+            .set({ accessToken, status: "connected", accountName: acct.name })
+            .where(eq(adAccounts.accountId, acct.id));
+        }
+      }
+
+      res.redirect(`/ad-accounts?fb_success=true&discovered=${discovered.length}&added=${addedCount}`);
+    } catch (error: any) {
+      res.redirect(`/?fb_error=${encodeURIComponent(error.message || "Login failed")}`);
+    }
+  });
+
+  app.get("/api/facebook/status", (_req, res) => {
+    const configured = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
+    res.json({ configured });
+  });
 
   app.get("/api/clients", async (_req, res) => {
     try {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -12,8 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, RefreshCw, Trash2, Loader2, BarChart3, Eye, EyeOff, AlertCircle, Zap, CheckCircle2 } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Loader2, BarChart3, Eye, EyeOff, AlertCircle, Zap, CheckCircle2, LogIn } from "lucide-react";
 import { SiFacebook, SiGoogleads, SiTiktok } from "react-icons/si";
+import { useLocation } from "wouter";
 
 interface AdAccountSafe {
   id: number;
@@ -94,6 +95,49 @@ function CampaignStatusBadge({ status }: { status: string }) {
   if (normalized === "ACTIVE" || normalized === "ENABLE") return <Badge variant="default" className="bg-green-600">{status}</Badge>;
   if (normalized === "PAUSED" || normalized === "DISABLE") return <Badge variant="secondary">{status}</Badge>;
   return <Badge variant="outline">{status}</Badge>;
+}
+
+function FacebookLoginButton({ size = "default" }: { size?: "default" | "lg" }) {
+  const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
+
+  const { data: fbStatus } = useQuery<{ configured: boolean }>({
+    queryKey: ["/api/facebook/status"],
+  });
+
+  const handleLogin = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/facebook/login");
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast({ title: "Error", description: data.message || "Could not start Facebook login", variant: "destructive" });
+        setLoading(false);
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to connect to server", variant: "destructive" });
+      setLoading(false);
+    }
+  };
+
+  if (fbStatus && !fbStatus.configured) {
+    return null;
+  }
+
+  return (
+    <Button
+      onClick={handleLogin}
+      disabled={loading}
+      size={size}
+      className="bg-[#1877F2] hover:bg-[#166FE5] text-white gap-2"
+      data-testid="button-facebook-login"
+    >
+      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <SiFacebook className="w-4 h-4" />}
+      Login with Facebook
+    </Button>
+  );
 }
 
 function QuickConnectDialog() {
@@ -441,6 +485,28 @@ function CampaignView({ account }: { account: AdAccountSafe }) {
 
 export default function AdAccounts() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fbSuccess = params.get("fb_success");
+    const fbError = params.get("fb_error");
+    const discovered = params.get("discovered");
+    const added = params.get("added");
+
+    if (fbSuccess) {
+      toast({
+        title: "Facebook connected!",
+        description: `Found ${discovered || 0} ad account${discovered !== "1" ? "s" : ""}, ${added || 0} newly added.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/ad-accounts"] });
+      window.history.replaceState({}, "", "/ad-accounts");
+    }
+    if (fbError) {
+      toast({ title: "Facebook login failed", description: decodeURIComponent(fbError), variant: "destructive" });
+      window.history.replaceState({}, "", "/ad-accounts");
+    }
+  }, []);
 
   const { data: accounts, isLoading } = useQuery<AdAccountSafe[]>({
     queryKey: ["/api/ad-accounts"],
@@ -474,6 +540,7 @@ export default function AdAccounts() {
           <div className="flex items-center gap-2">
             <ManualAddDialog />
             <QuickConnectDialog />
+            <FacebookLoginButton />
           </div>
         </div>
 
@@ -483,66 +550,46 @@ export default function AdAccounts() {
           </div>
         ) : !accounts || accounts.length === 0 ? (
           <div className="space-y-6">
-            <Card className="border-dashed">
+            <Card className="border-2 border-[#1877F2]/30 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20">
               <CardContent className="flex flex-col items-center justify-center py-16 gap-5">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-                    <SiFacebook className="w-7 h-7 text-blue-600" />
-                  </div>
-                  <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
-                    <SiGoogleads className="w-7 h-7 text-red-500" />
-                  </div>
-                  <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                    <SiTiktok className="w-7 h-7" />
-                  </div>
+                <div className="w-20 h-20 rounded-full bg-[#1877F2]/10 flex items-center justify-center">
+                  <SiFacebook className="w-10 h-10 text-[#1877F2]" />
                 </div>
                 <div className="text-center">
-                  <h3 className="font-semibold text-lg">Connect your ad accounts</h3>
-                  <p className="text-sm text-muted-foreground max-w-md mt-1">
-                    Paste your access token and we'll automatically discover all your ad accounts — no need to add them one by one.
+                  <h3 className="font-semibold text-xl">Connect your Facebook Ads</h3>
+                  <p className="text-sm text-muted-foreground max-w-md mt-2">
+                    Log in with your Facebook account and all your ad accounts will be connected automatically. One click, everything synced.
                   </p>
                 </div>
-                <QuickConnectDialog />
-                <p className="text-xs text-muted-foreground">
-                  Or <ManualAddDialog /> if you want to add a specific account
-                </p>
+                <FacebookLoginButton size="lg" />
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">How to get your access token</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 text-sm">
-                <div className="flex gap-3">
-                  <SiFacebook className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Facebook / Meta Ads</p>
-                    <p className="text-muted-foreground">
-                      Go to <a href="https://business.facebook.com/settings/system-users" target="_blank" rel="noopener" className="underline">Meta Business Settings</a> → System Users → Generate Token with <code className="bg-muted px-1 rounded">ads_read</code> permission.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <SiTiktok className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">TikTok Ads</p>
-                    <p className="text-muted-foreground">
-                      Go to <a href="https://business-api.tiktok.com/portal/apps" target="_blank" rel="noopener" className="underline">TikTok Marketing API</a> → Create/manage app → Get Access Token.
-                    </p>
-                  </div>
-                </div>
-                <div className="flex gap-3">
-                  <SiGoogleads className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Google Ads</p>
-                    <p className="text-muted-foreground">
-                      Requires OAuth setup. Use "Add Manually" and enter your Customer ID and OAuth token.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+              <div className="relative flex justify-center">
+                <span className="bg-background px-3 text-sm text-muted-foreground">or connect another way</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 py-8">
+                  <Zap className="w-8 h-8 text-muted-foreground" />
+                  <p className="font-medium text-sm">Paste Access Token</p>
+                  <p className="text-xs text-muted-foreground text-center">Have a token? Auto-discover all accounts from it.</p>
+                  <QuickConnectDialog />
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="flex flex-col items-center gap-3 py-8">
+                  <Plus className="w-8 h-8 text-muted-foreground" />
+                  <p className="font-medium text-sm">Add Manually</p>
+                  <p className="text-xs text-muted-foreground text-center">Enter account ID and token for any platform.</p>
+                  <ManualAddDialog />
+                </CardContent>
+              </Card>
+            </div>
           </div>
         ) : (
           <Tabs defaultValue="all">
