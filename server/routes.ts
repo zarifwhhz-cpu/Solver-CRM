@@ -681,6 +681,83 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/action-needed", async (_req, res) => {
+    try {
+      const allClients = await storage.getClients();
+      const issues: Array<{ type: string; severity: 'high' | 'medium' | 'low'; id?: number; clientId?: number; clientName?: string; status?: string; message: string; action: string }> = [];
+
+      for (const client of allClients) {
+        if (!client.googleSheetUrl || !client.googleSheetId) {
+          issues.push({
+            type: 'missing_sheet',
+            severity: client.status === 'Active' ? 'high' : client.status === 'Hold' ? 'medium' : 'low',
+            id: client.id,
+            clientId: client.clientId,
+            clientName: client.name,
+            status: client.status,
+            message: `No Google Sheet linked — data cannot sync`,
+            action: `Add a Google Sheet URL for this client`,
+          });
+        }
+        if (!client.executive || client.executive.trim() === '') {
+          issues.push({
+            type: 'missing_executive',
+            severity: client.status === 'Active' ? 'high' : 'medium',
+            id: client.id,
+            clientId: client.clientId,
+            clientName: client.name,
+            status: client.status,
+            message: `No executive assigned`,
+            action: `Assign an executive to this client`,
+          });
+        }
+        if (!client.adsAccount || client.adsAccount.trim() === '') {
+          issues.push({
+            type: 'missing_ads_account',
+            severity: client.status === 'Active' ? 'high' : 'medium',
+            id: client.id,
+            clientId: client.clientId,
+            clientName: client.name,
+            status: client.status,
+            message: `No ads account assigned`,
+            action: `Assign an ads account to this client`,
+          });
+        }
+        const balance = parseFloat(client.balance) || 0;
+        const totalDue = parseFloat(client.totalDue) || 0;
+        if (client.status === 'Active' && balance < -500) {
+          issues.push({
+            type: 'high_negative_balance',
+            severity: 'high',
+            id: client.id,
+            clientId: client.clientId,
+            clientName: client.name,
+            status: client.status,
+            message: `High negative balance: ৳${balance.toFixed(2)}`,
+            action: `Follow up on payment collection`,
+          });
+        }
+      }
+
+      issues.sort((a, b) => {
+        const sevOrder = { high: 0, medium: 1, low: 2 };
+        return sevOrder[a.severity] - sevOrder[b.severity];
+      });
+
+      res.json({
+        issues,
+        summary: {
+          high: issues.filter(i => i.severity === 'high').length,
+          medium: issues.filter(i => i.severity === 'medium').length,
+          low: issues.filter(i => i.severity === 'low').length,
+          total: issues.length,
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/google/service-account", async (_req, res) => {
     try {
       const emails = await getAllServiceAccountEmails();

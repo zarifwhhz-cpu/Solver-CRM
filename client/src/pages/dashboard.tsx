@@ -67,6 +67,14 @@ import {
   RefreshCw,
   Filter,
   ChevronDown,
+  AlertTriangle,
+  AlertCircle,
+  Info,
+  ChevronRight,
+  FileX,
+  UserX,
+  MonitorX,
+  DollarSign,
 } from "lucide-react";
 import { formatBDT } from "@/lib/format";
 import type { Client } from "@shared/schema";
@@ -176,6 +184,14 @@ export default function Dashboard() {
 
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({
     queryKey: ["/api/stats"],
+  });
+
+  const [showActionNeeded, setShowActionNeeded] = useState(false);
+  const { data: actionNeeded } = useQuery<{
+    issues: Array<{ type: string; severity: 'high' | 'medium' | 'low'; id?: number; clientId?: number; clientName?: string; status?: string; message: string; action: string }>;
+    summary: { high: number; medium: number; low: number; total: number };
+  }>({
+    queryKey: ["/api/action-needed"],
   });
 
   const addClientForm = useForm<z.infer<typeof addClientSchema>>({
@@ -381,6 +397,95 @@ export default function Dashboard() {
             />
           </div>
         ) : null}
+
+        {actionNeeded && actionNeeded.summary.total > 0 && (
+          <Card className={`border ${actionNeeded.summary.high > 0 ? 'border-red-200 bg-red-50/30 dark:border-red-900 dark:bg-red-950/20' : 'border-amber-200 bg-amber-50/30 dark:border-amber-900 dark:bg-amber-950/20'}`}>
+            <CardContent className="p-4">
+              <div
+                className="flex items-center justify-between cursor-pointer"
+                onClick={() => setShowActionNeeded(!showActionNeeded)}
+              >
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className={`h-5 w-5 ${actionNeeded.summary.high > 0 ? 'text-red-500' : 'text-amber-500'}`} />
+                  <div>
+                    <p className="text-sm font-semibold">Action Needed</p>
+                    <p className="text-xs text-muted-foreground">
+                      {actionNeeded.summary.total} issue{actionNeeded.summary.total !== 1 ? 's' : ''} found
+                      {actionNeeded.summary.high > 0 && <span className="text-red-600 dark:text-red-400 font-medium"> · {actionNeeded.summary.high} urgent</span>}
+                      {actionNeeded.summary.medium > 0 && <span className="text-amber-600 dark:text-amber-400"> · {actionNeeded.summary.medium} important</span>}
+                      {actionNeeded.summary.low > 0 && <span className="text-muted-foreground"> · {actionNeeded.summary.low} minor</span>}
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${showActionNeeded ? 'rotate-90' : ''}`} />
+              </div>
+
+              {showActionNeeded && (
+                <div className="mt-4 space-y-2">
+                  {actionNeeded.issues.map((issue, idx) => {
+                    const severityStyles = {
+                      high: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/50',
+                      medium: 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50',
+                      low: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50',
+                    };
+                    const severityIcons = {
+                      high: <AlertCircle className="h-4 w-4 text-red-500 shrink-0" />,
+                      medium: <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />,
+                      low: <Info className="h-4 w-4 text-gray-400 shrink-0" />,
+                    };
+                    const typeIcons: Record<string, React.ReactNode> = {
+                      missing_sheet: <FileX className="h-3.5 w-3.5 shrink-0" />,
+                      missing_executive: <UserX className="h-3.5 w-3.5 shrink-0" />,
+                      missing_ads_account: <MonitorX className="h-3.5 w-3.5 shrink-0" />,
+                      high_negative_balance: <DollarSign className="h-3.5 w-3.5 shrink-0" />,
+                    };
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`rounded-md border p-3 flex items-start gap-3 ${severityStyles[issue.severity]}`}
+                      >
+                        {severityIcons[issue.severity]}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium">
+                              {issue.clientName}
+                            </span>
+                            {issue.clientId && (
+                              <span className="text-xs text-muted-foreground">#{issue.clientId}</span>
+                            )}
+                            {issue.status && (
+                              <Badge variant={issue.status === 'Active' ? 'default' : issue.status === 'Hold' ? 'secondary' : 'outline'} className="text-[10px] h-4">
+                                {issue.status}
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                            {typeIcons[issue.type]}
+                            {issue.message}
+                          </p>
+                          <p className="text-xs font-medium mt-1 text-foreground/80">
+                            → {issue.action}
+                          </p>
+                        </div>
+                        {issue.id && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0 h-7 text-xs"
+                            onClick={() => navigate(`/clients/${issue.id}`)}
+                          >
+                            Fix
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <div className="flex gap-3 items-center flex-wrap">
