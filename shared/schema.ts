@@ -57,6 +57,16 @@ export const insertAiSettingsSchema = createInsertSchema(aiSettings).omit({ id: 
 export type InsertAiSettings = z.infer<typeof insertAiSettingsSchema>;
 export type AiSettings = typeof aiSettings.$inferSelect;
 
+export const appSettings = pgTable("app_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+});
+
+export const insertAppSettingsSchema = createInsertSchema(appSettings).omit({ id: true });
+export type InsertAppSettings = z.infer<typeof insertAppSettingsSchema>;
+export type AppSettings = typeof appSettings.$inferSelect;
+
 export const adAccounts = pgTable("ad_accounts", {
   id: serial("id").primaryKey(),
   platform: text("platform").notNull(),

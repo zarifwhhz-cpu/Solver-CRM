@@ -11,6 +11,7 @@ import BulkPayments from "@/pages/bulk-payments";
 import AIAssistant from "@/pages/ai-assistant";
 import AdAccounts from "@/pages/ad-accounts";
 import Campaigns from "@/pages/campaigns";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/ai-assistant" component={AIAssistant} />
       <Route path="/ad-accounts" component={AdAccounts} />
       <Route path="/campaigns" component={Campaigns} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );

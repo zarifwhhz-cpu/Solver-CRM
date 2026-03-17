@@ -22,6 +22,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 11. **Campaigns Page**: Dedicated view to browse all campaigns across connected ad accounts with search, status/platform/account filtering, and sortable columns
 9. **Facebook OAuth Login**: One-click "Login with Facebook" to auto-discover and connect all ad accounts
 10. **Custom Logo Support**: Place logo.png in client/public/ to replace the default icon
+12. **Settings Page**: Connect Google Service Account from the web app UI — paste JSON key, view service account email, copy email for sharing sheets
 
 ## Production / Deployment
 - **Build**: `npm run build` → `dist/index.cjs` (server) + `dist/public/` (frontend)

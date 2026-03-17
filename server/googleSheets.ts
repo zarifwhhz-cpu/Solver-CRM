@@ -1,15 +1,30 @@
 import { google } from 'googleapis';
+import { db } from './db';
+import { appSettings } from '@shared/schema';
+import { eq } from 'drizzle-orm';
+
+async function getServiceAccountJSON(): Promise<string | null> {
+  try {
+    const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+    if (rows.length > 0 && rows[0].value) {
+      return rows[0].value;
+    }
+  } catch (e) {
+  }
+  return process.env.GOOGLE_SERVICE_ACCOUNT_JSON || null;
+}
 
 export async function getUncachableGoogleSheetClient() {
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set. Please set it with your Google service account key JSON.');
+  const json = await getServiceAccountJSON();
+  if (!json) {
+    throw new Error('Google Service Account is not configured. Go to Settings to connect your Google account, or set GOOGLE_SERVICE_ACCOUNT_JSON in .env.');
   }
 
   let credentials;
   try {
-    credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    credentials = JSON.parse(json);
   } catch (e) {
-    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Ensure the entire service account key file content is set as the env var value.');
+    throw new Error('Google Service Account JSON is not valid. Please check the value in Settings or .env.');
   }
   const auth = new google.auth.GoogleAuth({
     credentials,
@@ -17,6 +32,17 @@ export async function getUncachableGoogleSheetClient() {
   });
   const authClient = await auth.getClient();
   return google.sheets({ version: 'v4', auth: authClient as any });
+}
+
+export async function getServiceAccountEmail(): Promise<string | null> {
+  const json = await getServiceAccountJSON();
+  if (!json) return null;
+  try {
+    const creds = JSON.parse(json);
+    return creds.client_email || null;
+  } catch {
+    return null;
+  }
 }
 
 export function extractSheetId(url: string): string | null {

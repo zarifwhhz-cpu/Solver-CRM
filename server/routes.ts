@@ -2,9 +2,9 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
-import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts } from "@shared/schema";
+import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts, appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
@@ -563,6 +563,62 @@ export async function registerRoutes(
         inactiveCount,
         holdCount,
       });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/google/service-account", async (_req, res) => {
+    try {
+      const email = await getServiceAccountEmail();
+      const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      const fromDb = rows.length > 0 && !!rows[0].value;
+      const fromEnv = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+      res.json({
+        configured: !!email,
+        email: email || null,
+        source: fromDb ? 'database' : fromEnv ? 'environment' : null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/google/service-account", async (req, res) => {
+    try {
+      const { json } = req.body;
+      if (!json || typeof json !== 'string') {
+        return res.status(400).json({ message: "Service account JSON is required" });
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        return res.status(400).json({ message: "Invalid JSON format. Please paste the entire service account key file content." });
+      }
+
+      if (!parsed.client_email || !parsed.private_key) {
+        return res.status(400).json({ message: "Invalid service account JSON. It must contain 'client_email' and 'private_key' fields." });
+      }
+
+      const existing = await db.select().from(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      if (existing.length > 0) {
+        await db.update(appSettings).set({ value: json }).where(eq(appSettings.key, 'google_service_account_json'));
+      } else {
+        await db.insert(appSettings).values({ key: 'google_service_account_json', value: json });
+      }
+
+      res.json({ success: true, email: parsed.client_email });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/google/service-account", async (_req, res) => {
+    try {
+      await db.delete(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
