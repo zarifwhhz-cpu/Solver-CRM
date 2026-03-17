@@ -32,7 +32,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - **Google Sheets Auth**: Set `GOOGLE_SERVICE_ACCOUNT_JSON` env var with service account JSON.
 - **Facebook OAuth**: Set `FACEBOOK_APP_ID` and `FACEBOOK_APP_SECRET` env vars. Redirect URI: `https://yourdomain.com/api/facebook/callback`
 - **Files**: `.env.example`, `Dockerfile`, `.dockerignore`, `.gitignore`, `Procfile`, `README.md` all present
-- **Vite Config**: Uses React plugin and path aliases only.
+- **Vite Config**: Uses React plugin, Replit cartographer plugin (in dev on Replit), and path aliases.
 
 ## Data Model
 - `clients`: id, clientId (custom), name, balance, totalDue, campaignDue, status, executive, adsAccount, googleSheetUrl, googleSheetId
