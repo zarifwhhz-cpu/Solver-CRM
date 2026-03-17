@@ -293,27 +293,42 @@ export default function SettingsPage() {
               <div className="rounded-md border bg-muted/30 p-4 space-y-3">
                 <p className="text-sm font-medium">Speed up sync with multiple accounts</p>
                 <p className="text-xs text-muted-foreground">
-                  Google limits each service account to 60 API reads per minute. Adding more accounts multiplies this quota:
+                  Google limits each service account to 60 API reads per minute. Adding more accounts multiplies this quota. There's no limit — add as many as you need.
                 </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 1 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
-                    <p className="text-lg font-bold">1</p>
-                    <p className="text-xs text-muted-foreground">account</p>
-                    <p className="text-xs font-medium mt-1">3 clients/batch</p>
-                  </div>
-                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 2 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
-                    <p className="text-lg font-bold">2</p>
-                    <p className="text-xs text-muted-foreground">accounts</p>
-                    <p className="text-xs font-medium mt-1">6 clients/batch</p>
-                  </div>
-                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 3 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
-                    <p className="text-lg font-bold">3</p>
-                    <p className="text-xs text-muted-foreground">accounts</p>
-                    <p className="text-xs font-medium mt-1">9 clients/batch</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {(() => {
+                    const current = googleStatus.accountCount || 1;
+                    const maxShow = Math.max(current + 1, 3);
+                    return Array.from({ length: maxShow }, (_, i) => {
+                      const n = i + 1;
+                      const isActive = n <= current;
+                      const isCurrent = n === current;
+                      return (
+                        <div
+                          key={n}
+                          className={`rounded-md border p-2 text-center min-w-[90px] ${
+                            isActive
+                              ? 'bg-green-50 border-green-300 dark:bg-green-950 dark:border-green-700'
+                              : 'bg-muted/50 border-dashed'
+                          }`}
+                        >
+                          <p className="text-lg font-bold">{n}</p>
+                          <p className="text-xs text-muted-foreground">{n === 1 ? 'account' : 'accounts'}</p>
+                          <p className="text-xs font-medium mt-1">{n * 3} clients/batch</p>
+                          {isCurrent && (
+                            <p className="text-[10px] text-green-600 dark:text-green-400 font-medium mt-1">Current</p>
+                          )}
+                        </div>
+                      );
+                    });
+                  })()}
+                  <div className="rounded-md border border-dashed p-2 text-center min-w-[90px] opacity-60">
+                    <p className="text-lg font-bold">...</p>
+                    <p className="text-xs text-muted-foreground">no limit</p>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Click <strong>"+ Add Another Account"</strong> above to create and add more service accounts. Each new account needs to be shared with all your Google Sheets.
+                  Click <strong>"+ Add Another Account"</strong> above to add more. Each new account needs Editor access to all your Google Sheets.
                 </p>
               </div>
             </>
