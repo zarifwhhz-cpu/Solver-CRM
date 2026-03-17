@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Settings2, Shield, CheckCircle2, XCircle, Copy, Trash2, Plus } from "lucide-react";
+import { Settings2, Shield, CheckCircle2, XCircle, Copy, Trash2, Plus, AlertTriangle, AlertCircle, Info, FileX, UserX, MonitorX, DollarSign, ChevronRight } from "lucide-react";
 
 interface GoogleServiceAccountStatus {
   configured: boolean;
@@ -17,6 +18,7 @@ interface GoogleServiceAccountStatus {
 }
 
 export default function SettingsPage() {
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   const [jsonInput, setJsonInput] = useState("");
   const [showJsonInput, setShowJsonInput] = useState(false);
@@ -25,6 +27,13 @@ export default function SettingsPage() {
 
   const { data: googleStatus, isLoading: googleLoading } = useQuery<GoogleServiceAccountStatus>({
     queryKey: ["/api/google/service-account"],
+  });
+
+  const { data: actionNeeded } = useQuery<{
+    issues: Array<{ type: string; severity: 'high' | 'medium' | 'low'; id?: number; clientId?: number; clientName?: string; status?: string; message: string; action: string }>;
+    summary: { high: number; medium: number; low: number; total: number };
+  }>({
+    queryKey: ["/api/action-needed"],
   });
 
   const saveGoogleMutation = useMutation({
@@ -335,6 +344,94 @@ export default function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {actionNeeded && actionNeeded.summary.total > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className={`h-5 w-5 ${actionNeeded.summary.high > 0 ? 'text-red-500' : 'text-amber-500'}`} />
+                <div>
+                  <CardTitle className="text-lg">Action Needed</CardTitle>
+                  <CardDescription>
+                    {actionNeeded.summary.total} issue{actionNeeded.summary.total !== 1 ? 's' : ''} detected that need your attention
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {actionNeeded.summary.high > 0 && (
+                  <Badge variant="destructive" className="text-xs">{actionNeeded.summary.high} Urgent</Badge>
+                )}
+                {actionNeeded.summary.medium > 0 && (
+                  <Badge className="text-xs bg-amber-500 hover:bg-amber-600">{actionNeeded.summary.medium} Important</Badge>
+                )}
+                {actionNeeded.summary.low > 0 && (
+                  <Badge variant="secondary" className="text-xs">{actionNeeded.summary.low} Minor</Badge>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {actionNeeded.issues.map((issue, idx) => {
+              const severityStyles = {
+                high: 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/50',
+                medium: 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/50',
+                low: 'border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50',
+              };
+              const severityIcons = {
+                high: <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />,
+                medium: <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />,
+                low: <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />,
+              };
+              const typeIcons: Record<string, React.ReactNode> = {
+                missing_sheet: <FileX className="h-3.5 w-3.5 shrink-0" />,
+                missing_executive: <UserX className="h-3.5 w-3.5 shrink-0" />,
+                missing_ads_account: <MonitorX className="h-3.5 w-3.5 shrink-0" />,
+                high_negative_balance: <DollarSign className="h-3.5 w-3.5 shrink-0" />,
+              };
+
+              return (
+                <div
+                  key={idx}
+                  className={`rounded-md border p-3 flex items-start gap-3 ${severityStyles[issue.severity]}`}
+                >
+                  {severityIcons[issue.severity]}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium">{issue.clientName}</span>
+                      {issue.clientId && (
+                        <span className="text-xs text-muted-foreground">#{issue.clientId}</span>
+                      )}
+                      {issue.status && (
+                        <Badge variant={issue.status === 'Active' ? 'default' : issue.status === 'Hold' ? 'secondary' : 'outline'} className="text-[10px] h-4">
+                          {issue.status}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1.5">
+                      {typeIcons[issue.type]}
+                      {issue.message}
+                    </p>
+                    <p className="text-xs font-medium mt-1 text-foreground/80">
+                      → {issue.action}
+                    </p>
+                  </div>
+                  {issue.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0 h-7 text-xs"
+                      onClick={() => navigate(`/clients/${issue.id}`)}
+                    >
+                      Fix <ChevronRight className="h-3 w-3 ml-1" />
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
