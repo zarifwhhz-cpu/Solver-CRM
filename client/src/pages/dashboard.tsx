@@ -552,10 +552,10 @@ export default function Dashboard() {
       </div>
 
       <Dialog open={showAddClient} onOpenChange={setShowAddClient}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Add New Client</DialogTitle>
-            <DialogDescription>Enter the client details below.</DialogDescription>
+            <DialogDescription>Enter the client details below. Optionally link a client sheet for transaction sync.</DialogDescription>
           </DialogHeader>
           <Form {...addClientForm}>
             <form
@@ -667,7 +667,7 @@ export default function Dashboard() {
                 name="googleSheetUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Google Sheet URL (optional)</FormLabel>
+                    <FormLabel>Client Sheet URL (optional)</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="https://docs.google.com/spreadsheets/d/..."
@@ -676,6 +676,50 @@ export default function Dashboard() {
                       />
                     </FormControl>
                     <FormMessage />
+                    <div className="rounded-md border bg-muted/50 p-2.5 space-y-1.5 mt-2" data-testid="example-client-sheet">
+                      <p className="text-xs font-semibold text-muted-foreground">Expected client sheet format (PNL tab):</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-[10px] border-collapse">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-1 font-medium text-muted-foreground">A: Date</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">B: BDT</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">C: USD</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">D: Platform</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">E: Remaining</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">F: Spend</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">G: Note</th>
+                            </tr>
+                          </thead>
+                          <tbody className="font-mono">
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1" colSpan={3}>Row 1: Header</td>
+                              <td className="p-1" colSpan={4}></td>
+                            </tr>
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1"></td>
+                              <td className="p-1"></td>
+                              <td className="p-1"></td>
+                              <td className="p-1 font-semibold">D2: Balance</td>
+                              <td className="p-1" colSpan={3}></td>
+                            </tr>
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1" colSpan={7}>Row 3: Column titles</td>
+                            </tr>
+                            <tr className="border-b border-dashed">
+                              <td className="p-1">08/03/26</td>
+                              <td className="p-1">1500</td>
+                              <td className="p-1">0</td>
+                              <td className="p-1">Facebook</td>
+                              <td className="p-1 italic text-muted-foreground">formula</td>
+                              <td className="p-1 italic text-muted-foreground">formula</td>
+                              <td className="p-1">bkash</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">D2 = BDT balance. Data from Row 4. Columns E-F are formulas (not overwritten).</p>
+                    </div>
                   </FormItem>
                 )}
               />
@@ -693,14 +737,58 @@ export default function Dashboard() {
       </Dialog>
 
       <Dialog open={showImport} onOpenChange={setShowImport}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Import from Google Sheet</DialogTitle>
+            <DialogTitle>Import from Dashboard Sheet</DialogTitle>
             <DialogDescription>
-              Paste your main client list Google Sheet URL to bulk import all
-              clients.
+              Paste your main client list Google Sheet URL to bulk import all clients. The sheet should have a tab named <strong>"Client Dashboard"</strong> (or use the first tab).
             </DialogDescription>
           </DialogHeader>
+          <div className="rounded-md border bg-muted/50 p-3 space-y-2" data-testid="example-dashboard-sheet">
+            <p className="text-xs font-semibold text-muted-foreground">Expected sheet format (Client Dashboard tab):</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">A: Client ID</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">B: Name</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">C: (unused)</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">D: Balance</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">E: Campaign Due</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">F: (unused)</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">G: Status</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">H: Executive</th>
+                    <th className="text-left p-1.5 font-medium text-muted-foreground">I: Ads Account</th>
+                  </tr>
+                </thead>
+                <tbody className="font-mono">
+                  <tr className="border-b border-dashed">
+                    <td className="p-1.5">1001</td>
+                    <td className="p-1.5">Rafshan Khan</td>
+                    <td className="p-1.5">-</td>
+                    <td className="p-1.5">15000</td>
+                    <td className="p-1.5">5000</td>
+                    <td className="p-1.5">-</td>
+                    <td className="p-1.5">Active</td>
+                    <td className="p-1.5">Jisan</td>
+                    <td className="p-1.5">RAFSHAN TSA</td>
+                  </tr>
+                  <tr className="border-b border-dashed">
+                    <td className="p-1.5">1002</td>
+                    <td className="p-1.5">Alam Trading</td>
+                    <td className="p-1.5">-</td>
+                    <td className="p-1.5">8500</td>
+                    <td className="p-1.5">3000</td>
+                    <td className="p-1.5">-</td>
+                    <td className="p-1.5">Hold</td>
+                    <td className="p-1.5">Saif</td>
+                    <td className="p-1.5">ALAM TSA</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-muted-foreground">Row 1 = header row, Row 2 = column titles, Data starts from Row 3. Status must be Active, Inactive, or Hold.</p>
+          </div>
           <Form {...importForm}>
             <form
               onSubmit={importForm.handleSubmit((data) =>
@@ -713,7 +801,7 @@ export default function Dashboard() {
                 name="url"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Google Sheet URL</FormLabel>
+                    <FormLabel>Dashboard Sheet URL</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="https://docs.google.com/spreadsheets/d/..."

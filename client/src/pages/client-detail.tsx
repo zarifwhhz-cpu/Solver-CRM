@@ -689,7 +689,7 @@ export default function ClientDetail() {
       </Dialog>
 
       <Dialog open={showEdit} onOpenChange={setShowEdit}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Client</DialogTitle>
             <DialogDescription>Update client details.</DialogDescription>
@@ -772,7 +772,7 @@ export default function ClientDetail() {
                 name="googleSheetUrl"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Google Sheet URL</FormLabel>
+                    <FormLabel>Client Sheet URL</FormLabel>
                     <FormControl>
                       <Input
                         placeholder="https://docs.google.com/spreadsheets/d/..."
@@ -781,6 +781,50 @@ export default function ClientDetail() {
                       />
                     </FormControl>
                     <FormMessage />
+                    <div className="rounded-md border bg-muted/50 p-2.5 space-y-1.5 mt-2" data-testid="example-client-sheet-edit">
+                      <p className="text-xs font-semibold text-muted-foreground">Expected client sheet format (PNL tab):</p>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-[10px] border-collapse">
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left p-1 font-medium text-muted-foreground">A: Date</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">B: BDT</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">C: USD</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">D: Platform</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">E: Remaining</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">F: Spend</th>
+                              <th className="text-left p-1 font-medium text-muted-foreground">G: Note</th>
+                            </tr>
+                          </thead>
+                          <tbody className="font-mono">
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1" colSpan={3}>Row 1: Header</td>
+                              <td className="p-1" colSpan={4}></td>
+                            </tr>
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1"></td>
+                              <td className="p-1"></td>
+                              <td className="p-1"></td>
+                              <td className="p-1 font-semibold">D2: Balance</td>
+                              <td className="p-1" colSpan={3}></td>
+                            </tr>
+                            <tr className="border-b border-dashed text-muted-foreground">
+                              <td className="p-1" colSpan={7}>Row 3: Column titles</td>
+                            </tr>
+                            <tr className="border-b border-dashed">
+                              <td className="p-1">08/03/26</td>
+                              <td className="p-1">1500</td>
+                              <td className="p-1">0</td>
+                              <td className="p-1">Facebook</td>
+                              <td className="p-1 italic text-muted-foreground">formula</td>
+                              <td className="p-1 italic text-muted-foreground">formula</td>
+                              <td className="p-1">bkash</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">D2 = BDT balance. Data from Row 4. Columns E-F are formulas (not overwritten).</p>
+                    </div>
                   </FormItem>
                 )}
               />
