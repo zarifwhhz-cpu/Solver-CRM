@@ -199,9 +199,23 @@ export default function SettingsPage() {
           {showAdditionalInput && googleStatus?.configured && (
             <div className="space-y-3 rounded-md border p-3 bg-muted/30">
               <p className="text-sm font-medium">Add Additional Service Account</p>
-              <p className="text-xs text-muted-foreground">
-                Create another service account in Google Cloud Console, share your sheets with it, and paste the JSON key below.
-              </p>
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-medium">How to create an additional account:</p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Go to <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">Google Cloud Console &rarr; Service Accounts</a></li>
+                  <li>Open the <strong>same project</strong> where your current account lives</li>
+                  <li>Click <strong>"+ Create Service Account"</strong> at the top</li>
+                  <li>Give it a name (e.g. <code className="bg-muted px-1 rounded">tsa-sync-2</code>) and click <strong>Create and Continue</strong></li>
+                  <li>Skip optional permissions, click <strong>Done</strong></li>
+                  <li>Click the new account &rarr; <strong>Keys</strong> tab &rarr; <strong>Add Key &rarr; Create New Key &rarr; JSON</strong></li>
+                  <li>A JSON file will download — open it in a text editor and copy the entire content</li>
+                </ol>
+              </div>
+              <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950 dark:border-amber-800 p-2">
+                <p className="text-xs text-amber-800 dark:text-amber-200">
+                  <strong>Don't forget:</strong> Share your Google Sheets with the new account's email too (Editor access), otherwise it won't be able to read them.
+                </p>
+              </div>
               <Textarea
                 placeholder='Paste the JSON key for the additional service account...'
                 value={additionalJsonInput}
@@ -268,12 +282,41 @@ export default function SettingsPage() {
             </div>
           )}
 
-          {googleStatus?.configured && !showJsonInput && (
-            <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800 p-3">
-              <p className="text-xs text-blue-800 dark:text-blue-200">
-                <strong>Important:</strong> Share each Google Sheet with all service account emails above (Editor access) for the app to read and write data.
-              </p>
-            </div>
+          {googleStatus?.configured && !showJsonInput && !showAdditionalInput && (
+            <>
+              <div className="rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950 dark:border-blue-800 p-3">
+                <p className="text-xs text-blue-800 dark:text-blue-200">
+                  <strong>Important:</strong> Share each Google Sheet with all service account emails above (Editor access) for the app to read and write data.
+                </p>
+              </div>
+
+              <div className="rounded-md border bg-muted/30 p-4 space-y-3">
+                <p className="text-sm font-medium">Speed up sync with multiple accounts</p>
+                <p className="text-xs text-muted-foreground">
+                  Google limits each service account to 60 API reads per minute. Adding more accounts multiplies this quota:
+                </p>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 1 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
+                    <p className="text-lg font-bold">1</p>
+                    <p className="text-xs text-muted-foreground">account</p>
+                    <p className="text-xs font-medium mt-1">3 clients/batch</p>
+                  </div>
+                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 2 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
+                    <p className="text-lg font-bold">2</p>
+                    <p className="text-xs text-muted-foreground">accounts</p>
+                    <p className="text-xs font-medium mt-1">6 clients/batch</p>
+                  </div>
+                  <div className={`rounded-md border p-2 text-center ${(googleStatus.accountCount || 1) >= 3 ? 'bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800' : 'bg-muted/50'}`}>
+                    <p className="text-lg font-bold">3</p>
+                    <p className="text-xs text-muted-foreground">accounts</p>
+                    <p className="text-xs font-medium mt-1">9 clients/batch</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Click <strong>"+ Add Another Account"</strong> above to create and add more service accounts. Each new account needs to be shared with all your Google Sheets.
+                </p>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
