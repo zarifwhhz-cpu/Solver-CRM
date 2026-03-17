@@ -665,6 +665,30 @@ export default function AdAccounts() {
     },
   });
 
+  const [showAddMore, setShowAddMore] = useState(false);
+  const [addMoreToken, setAddMoreToken] = useState("");
+  const [addMorePlatform, setAddMorePlatform] = useState("facebook");
+
+  const addMoreMutation = useMutation({
+    mutationFn: async (data: { platform: string; accessToken: string }) => {
+      const res = await apiRequest("POST", "/api/ad-accounts/discover", data);
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad-accounts"] });
+      setShowAddMore(false);
+      setAddMoreToken("");
+      if (data.added > 0) {
+        toast({ title: `Added ${data.added} new account${data.added !== 1 ? 's' : ''}`, description: `Found ${data.discovered} total, ${data.skipped} already existed.` });
+      } else {
+        toast({ title: "No new accounts found", description: `All ${data.discovered} discovered account${data.discovered !== 1 ? 's' : ''} are already in the CRM.` });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Discovery failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const facebookAccounts = accounts?.filter(a => a.platform === "facebook") || [];
   const googleAccounts = accounts?.filter(a => a.platform === "google") || [];
   const tiktokAccounts = accounts?.filter(a => a.platform === "tiktok") || [];
@@ -786,6 +810,70 @@ export default function AdAccounts() {
               );
             })}
           </Tabs>
+        )}
+
+        {accounts && accounts.length > 0 && (
+          <Card className="border-dashed">
+            <CardContent className="py-4">
+              {!showAddMore ? (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium">Need to add more accounts?</p>
+                    <p className="text-xs text-muted-foreground">Add accounts from your Business Manager that aren't listed above</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowAddMore(true)} data-testid="button-add-more-accounts">
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add More Accounts
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">Add More Accounts from Business Manager</p>
+                    <Button variant="ghost" size="sm" onClick={() => { setShowAddMore(false); setAddMoreToken(""); }}>Cancel</Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Paste your access token and we'll find any ad accounts not yet added to the CRM.
+                  </p>
+                  <div className="flex gap-2">
+                    <Select value={addMorePlatform} onValueChange={(v) => setAddMorePlatform(v)}>
+                      <SelectTrigger className="w-44">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="facebook">Facebook / Meta</SelectItem>
+                        <SelectItem value="tiktok">TikTok</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="password"
+                      placeholder="Paste access token..."
+                      value={addMoreToken}
+                      onChange={(e) => setAddMoreToken(e.target.value)}
+                      className="flex-1"
+                      data-testid="input-add-more-token"
+                    />
+                    <Button
+                      onClick={() => {
+                        addMoreMutation.mutate({ platform: addMorePlatform, accessToken: addMoreToken });
+                      }}
+                      disabled={addMoreMutation.isPending || !addMoreToken.trim()}
+                      data-testid="button-discover-more"
+                    >
+                      {addMoreMutation.isPending ? (
+                        <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Discovering...</>
+                      ) : (
+                        <><Zap className="w-4 h-4 mr-1" /> Discover & Add</>
+                      )}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Get from <strong>Meta Business Settings → System Users → Generate Token</strong> with <strong>ads_read</strong> permission.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         )}
       </div>
     </ScrollArea>
