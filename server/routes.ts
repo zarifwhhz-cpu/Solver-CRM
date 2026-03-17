@@ -357,13 +357,11 @@ export async function registerRoutes(
         results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
       }
 
-      const BATCH_SIZE = 5;
-      for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        const batch = syncableClients.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map(async (client) => {
+      const statusPriority: Record<string, number> = { 'Active': 0, 'Hold': 1, 'Inactive': 2 };
+      syncableClients.sort((a, b) => (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2));
+
+      const syncOneClient = async (client: typeof syncableClients[0], attempt = 1): Promise<{ transactionsCount: number; balance: string }> => {
+        try {
           const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId!, sheetsClient);
           await storage.deleteTransactionsByClientId(client.id);
           for (const txn of sheetData) {
@@ -372,7 +370,25 @@ export async function registerRoutes(
           const balance = sheetBalance || "0";
           await storage.updateClient(client.id, { balance, totalDue: balance });
           return { transactionsCount: sheetData.length, balance };
-        }));
+        } catch (err: any) {
+          if (attempt < 3 && err.message?.includes('Quota exceeded')) {
+            const waitTime = attempt * 15000;
+            console.log(`[Sync] Quota hit for ${client.name}, retrying in ${waitTime / 1000}s (attempt ${attempt + 1}/3)`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            return syncOneClient(client, attempt + 1);
+          }
+          throw err;
+        }
+      };
+
+      const BATCH_SIZE = 3;
+      const BATCH_DELAY = 3000;
+      for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+        const batch = syncableClients.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(batch.map(client => syncOneClient(client)));
 
         for (let j = 0; j < batch.length; j++) {
           const client = batch[j];
