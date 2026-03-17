@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts, appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, clearSheetClientCache } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
@@ -347,6 +347,7 @@ export async function registerRoutes(
 
   app.post("/api/sync-all", async (req, res) => {
     try {
+      const sheetsClient = await getGoogleSheetClient();
       const allClients = await storage.getClients();
       const results: Array<{ clientId: number; name: string; status: string; transactionsCount?: number; balance?: string; error?: string }> = [];
 
@@ -356,14 +357,14 @@ export async function registerRoutes(
         results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
       }
 
-      const BATCH_SIZE = 2;
+      const BATCH_SIZE = 5;
       for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
         if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 5000));
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         const batch = syncableClients.slice(i, i + BATCH_SIZE);
         const batchResults = await Promise.allSettled(batch.map(async (client) => {
-          const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId!);
+          const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId!, sheetsClient);
           await storage.deleteTransactionsByClientId(client.id);
           for (const txn of sheetData) {
             await storage.createTransaction({ clientId: client.id, ...txn });
@@ -687,6 +688,7 @@ export async function registerRoutes(
         await db.insert(appSettings).values({ key: 'google_service_account_json', value: json });
       }
 
+      clearSheetClientCache();
       res.json({ success: true, email: parsed.client_email });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -696,6 +698,7 @@ export async function registerRoutes(
   app.delete("/api/google/service-account", async (_req, res) => {
     try {
       await db.delete(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      clearSheetClientCache();
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -977,8 +980,7 @@ export async function registerRoutes(
       let readData: Record<number, any[]> = {};
 
       if (readRows && Array.isArray(readRows) && readRows.length > 0) {
-        const { getUncachableGoogleSheetClient } = await import("./googleSheets");
-        const sheets = await getUncachableGoogleSheetClient();
+        const sheets = await getGoogleSheetClient();
         const meta = await sheets.spreadsheets.get({ spreadsheetId });
         const sheetNames = meta.data.sheets?.map((s: any) => s.properties?.title) || [];
         const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');

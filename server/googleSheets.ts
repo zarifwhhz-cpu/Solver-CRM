@@ -1,4 +1,4 @@
-import { google } from 'googleapis';
+import { google, sheets_v4 } from 'googleapis';
 import { db } from './db';
 import { appSettings } from '@shared/schema';
 import { eq } from 'drizzle-orm';
@@ -14,10 +14,18 @@ async function getServiceAccountJSON(): Promise<string | null> {
   return process.env.GOOGLE_SERVICE_ACCOUNT_JSON || null;
 }
 
-export async function getUncachableGoogleSheetClient() {
+let cachedClient: sheets_v4.Sheets | null = null;
+let cachedJsonHash: string | null = null;
+
+export async function getGoogleSheetClient(): Promise<sheets_v4.Sheets> {
   const json = await getServiceAccountJSON();
   if (!json) {
     throw new Error('Google Service Account is not configured. Go to Settings to connect your Google account, or set GOOGLE_SERVICE_ACCOUNT_JSON in .env.');
+  }
+
+  const jsonHash = json.slice(0, 100) + json.length;
+  if (cachedClient && cachedJsonHash === jsonHash) {
+    return cachedClient;
   }
 
   let credentials;
@@ -31,7 +39,14 @@ export async function getUncachableGoogleSheetClient() {
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   const authClient = await auth.getClient();
-  return google.sheets({ version: 'v4', auth: authClient as any });
+  cachedClient = google.sheets({ version: 'v4', auth: authClient as any });
+  cachedJsonHash = jsonHash;
+  return cachedClient;
+}
+
+export function clearSheetClientCache() {
+  cachedClient = null;
+  cachedJsonHash = null;
 }
 
 export async function getServiceAccountEmail(): Promise<string | null> {
@@ -56,12 +71,19 @@ function cleanAmount(value: string): string {
   return cleaned || "0";
 }
 
-export async function readClientSheetData(spreadsheetId: string) {
-  const sheets = await getUncachableGoogleSheetClient();
+async function resolvePnlSheetName(sheets: sheets_v4.Sheets, spreadsheetId: string): Promise<{ pnlSheet: string; sheetId: number }> {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
+  const sheetsList = meta.data.sheets || [];
+  const pnlSheetMeta = sheetsList.find(s => s.properties?.title === 'PNL') || sheetsList[0];
+  const pnlSheet = pnlSheetMeta?.properties?.title || 'Sheet1';
+  const sheetId = pnlSheetMeta?.properties?.sheetId || 0;
+  return { pnlSheet, sheetId };
+}
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
-  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+export async function readClientSheetData(spreadsheetId: string, sheetsClient?: sheets_v4.Sheets) {
+  const sheets = sheetsClient || await getGoogleSheetClient();
+
+  const { pnlSheet } = await resolvePnlSheetName(sheets, spreadsheetId);
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -109,9 +131,9 @@ export async function readClientSheetData(spreadsheetId: string) {
 }
 
 export async function readMainSheetClients(spreadsheetId: string) {
-  const sheets = await getUncachableGoogleSheetClient();
+  const sheets = await getGoogleSheetClient();
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
   const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
   const hasDashboard = sheetNames.includes('Client Dashboard');
 
@@ -197,13 +219,9 @@ export async function readMainSheetClients(spreadsheetId: string) {
 }
 
 export async function deleteSheetRows(spreadsheetId: string, rowNumbers: number[]) {
-  const sheets = await getUncachableGoogleSheetClient();
+  const sheets = await getGoogleSheetClient();
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
-  const pnlSheetName = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
-  const pnlSheetMeta = meta.data.sheets?.find(s => s.properties?.title === pnlSheetName);
-  const sheetId = pnlSheetMeta?.properties?.sheetId || 0;
+  const { sheetId, pnlSheet: pnlSheetName } = await resolvePnlSheetName(sheets, spreadsheetId);
 
   const sorted = [...rowNumbers].sort((a, b) => b - a);
 
@@ -227,11 +245,9 @@ export async function deleteSheetRows(spreadsheetId: string, rowNumbers: number[
 }
 
 export async function clearSheetRow(spreadsheetId: string, rowNumber: number) {
-  const sheets = await getUncachableGoogleSheetClient();
+  const sheets = await getGoogleSheetClient();
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
-  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
+  const { pnlSheet } = await resolvePnlSheetName(sheets, spreadsheetId);
 
   await sheets.spreadsheets.values.update({
     spreadsheetId,
@@ -253,8 +269,8 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
   remainingBdt: string;
   platformSpend: string;
   paymentNote: string;
-}) {
-  const sheets = await getUncachableGoogleSheetClient();
+}, sheetsClient?: sheets_v4.Sheets) {
+  const sheets = sheetsClient || await getGoogleSheetClient();
 
   const toNum = (val: string) => {
     const n = parseFloat(val);
@@ -262,10 +278,7 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
     return n.toString();
   };
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId });
-  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
-  const pnlSheet = sheetNames.includes('PNL') ? 'PNL' : (sheetNames[0] || 'Sheet1');
-  console.log(`[Sheet Write] Target sheet tab: '${pnlSheet}' in spreadsheet: ${spreadsheetId}`);
+  const { pnlSheet } = await resolvePnlSheetName(sheets, spreadsheetId);
 
   const colAData = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -273,58 +286,43 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
     valueRenderOption: 'FORMATTED_VALUE',
   });
   const colA = colAData.data.values || [];
-  console.log(`[Sheet Write] Column A returned ${colA.length} rows`);
 
   let lastDateRow = 3;
   for (let i = colA.length - 1; i >= 3; i--) {
     const cell = colA[i]?.[0]?.toString().trim();
     if (cell && /\d/.test(cell)) {
       lastDateRow = i + 1;
-      console.log(`[Sheet Write] Last date in col A at row ${lastDateRow}: "${cell}"`);
       break;
     }
   }
   const targetRow = lastDateRow + 1;
-  console.log(`[Sheet Write] Writing to row: ${targetRow}`);
 
-  const abcdData = [
-    transaction.date,
-    toNum(transaction.bdtAmount),
-    toNum(transaction.usdAmount),
-    transaction.platform,
-  ];
+  const writeData: { range: string; values: any[][] }[] = [];
 
-  const writeRangeAD = `'${pnlSheet}'!A${targetRow}:D${targetRow}`;
-  console.log(`[Sheet Write] Writing A-D to ${writeRangeAD}: ${JSON.stringify(abcdData)}`);
-
-  await sheets.spreadsheets.values.update({
-    spreadsheetId,
-    range: writeRangeAD,
-    valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [abcdData] },
+  writeData.push({
+    range: `'${pnlSheet}'!A${targetRow}:D${targetRow}`,
+    values: [[
+      transaction.date,
+      toNum(transaction.bdtAmount),
+      toNum(transaction.usdAmount),
+      transaction.platform,
+    ]],
   });
 
   if (transaction.paymentNote) {
-    const writeRangeG = `'${pnlSheet}'!G${targetRow}`;
-    console.log(`[Sheet Write] Writing G to ${writeRangeG}: "${transaction.paymentNote}"`);
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: writeRangeG,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [[transaction.paymentNote]] },
+    writeData.push({
+      range: `'${pnlSheet}'!G${targetRow}`,
+      values: [[transaction.paymentNote]],
     });
   }
 
-  console.log(`[Sheet Write] Done. Wrote to row ${targetRow}, columns A-D and G (skipped E-F to preserve formulas)`);
-
-  const verify = await sheets.spreadsheets.values.get({
+  await sheets.spreadsheets.values.batchUpdate({
     spreadsheetId,
-    range: `'${pnlSheet}'!A${targetRow}:G${targetRow}`,
+    requestBody: {
+      valueInputOption: 'USER_ENTERED',
+      data: writeData,
+    },
   });
-  const written = verify.data.values?.[0];
-  if (!written || !written[0]) {
-    throw new Error(`Verification failed: data not found at row ${targetRow} after write`);
-  }
-  console.log(`[Sheet Write] Verified: row ${targetRow} contains: ${written[0]} | ${written[1] || ''} | ... | ${written[6] || ''}`);
+
+  console.log(`[Sheet Write] Wrote to row ${targetRow} in '${pnlSheet}', columns A-D and G`);
 }
