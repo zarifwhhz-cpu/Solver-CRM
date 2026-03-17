@@ -340,7 +340,12 @@ export async function registerRoutes(
       for (const c of clientsData) {
         const existing = await storage.getClientByClientId(c.clientId);
         if (existing) {
-          await storage.updateClient(existing.id, c);
+          const updateData = { ...c };
+          if (!updateData.googleSheetUrl && existing.googleSheetUrl) {
+            updateData.googleSheetUrl = existing.googleSheetUrl;
+            updateData.googleSheetId = existing.googleSheetId;
+          }
+          await storage.updateClient(existing.id, updateData);
           updated++;
         } else {
           await storage.createClient(c);

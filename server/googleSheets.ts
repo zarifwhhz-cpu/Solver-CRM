@@ -132,9 +132,12 @@ export async function readMainSheetClients(spreadsheetId: string) {
     googleSheetId: string | null;
   }> = [];
 
-  const headerRow = rows[0] || [];
-  const hasStatus = headerRow.some((h: string) => h?.toLowerCase().includes('status'));
-  const dataStart = hasStatus ? 2 : 1;
+  const row0 = rows[0] || [];
+  const row1 = rows[1] || [];
+  const hasStatusRow0 = row0.some((h: string) => h?.toLowerCase().includes('status'));
+  const hasStatusRow1 = row1.some((h: string) => h?.toLowerCase().includes('status'));
+  const hasStatus = hasStatusRow0 || hasStatusRow1;
+  const dataStart = hasStatus ? (hasStatusRow0 ? 2 : (hasStatusRow1 ? 3 : 2)) : 1;
 
   for (let i = dataStart; i < rows.length; i++) {
     const row = rows[i];
