@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts, appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, clearSheetClientCache } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
@@ -347,12 +347,25 @@ export async function registerRoutes(
 
   app.post("/api/sync-all", async (req, res) => {
     try {
-      const sheetsClient = await getGoogleSheetClient();
+      const { filter } = req.body || {};
+      const sheetsClients = await getAllGoogleSheetClients();
+      const numAccounts = sheetsClients.length;
+      console.log(`[Sync] Using ${numAccounts} service account(s)`);
+
       const allClients = await storage.getClients();
       const results: Array<{ clientId: number; name: string; status: string; transactionsCount?: number; balance?: string; error?: string }> = [];
 
-      const syncableClients = allClients.filter(c => c.googleSheetId);
-      const skippedClients = allClients.filter(c => !c.googleSheetId);
+      let eligibleClients = allClients;
+      if (filter === 'active-hold') {
+        const inactive = allClients.filter(c => c.status === 'Inactive');
+        eligibleClients = allClients.filter(c => c.status !== 'Inactive');
+        for (const c of inactive) {
+          results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "Inactive client (use Sync All)" });
+        }
+      }
+
+      const syncableClients = eligibleClients.filter(c => c.googleSheetId);
+      const skippedClients = eligibleClients.filter(c => !c.googleSheetId);
       for (const c of skippedClients) {
         results.push({ clientId: c.clientId, name: c.name, status: "skipped", error: "No sheet linked" });
       }
@@ -360,7 +373,7 @@ export async function registerRoutes(
       const statusPriority: Record<string, number> = { 'Active': 0, 'Hold': 1, 'Inactive': 2 };
       syncableClients.sort((a, b) => (statusPriority[a.status] ?? 2) - (statusPriority[b.status] ?? 2));
 
-      const syncOneClient = async (client: typeof syncableClients[0], attempt = 1): Promise<{ transactionsCount: number; balance: string }> => {
+      const syncOneClient = async (client: typeof syncableClients[0], sheetsClient: typeof sheetsClients[0], attempt = 1): Promise<{ transactionsCount: number; balance: string }> => {
         try {
           const { txns: sheetData, sheetBalance } = await readClientSheetData(client.googleSheetId!, sheetsClient);
           await storage.deleteTransactionsByClientId(client.id);
@@ -375,20 +388,25 @@ export async function registerRoutes(
             const waitTime = attempt * 15000;
             console.log(`[Sync] Quota hit for ${client.name}, retrying in ${waitTime / 1000}s (attempt ${attempt + 1}/3)`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
-            return syncOneClient(client, attempt + 1);
+            return syncOneClient(client, sheetsClient, attempt + 1);
           }
           throw err;
         }
       };
 
-      const BATCH_SIZE = 3;
-      const BATCH_DELAY = 3000;
+      const BATCH_SIZE = 3 * numAccounts;
+      const BATCH_DELAY = numAccounts > 1 ? 1500 : 3000;
       for (let i = 0; i < syncableClients.length; i += BATCH_SIZE) {
         if (i > 0) {
           await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
         }
         const batch = syncableClients.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(batch.map(client => syncOneClient(client)));
+        const batchResults = await Promise.allSettled(
+          batch.map((client, idx) => {
+            const accountIdx = idx % numAccounts;
+            return syncOneClient(client, sheetsClients[accountIdx]);
+          })
+        );
 
         for (let j = 0; j < batch.length; j++) {
           const client = batch[j];
@@ -665,7 +683,8 @@ export async function registerRoutes(
 
   app.get("/api/google/service-account", async (_req, res) => {
     try {
-      const email = await getServiceAccountEmail();
+      const emails = await getAllServiceAccountEmails();
+      const email = emails[0] || null;
       const rows = await db.select().from(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
       const fromDb = rows.length > 0 && !!rows[0].value;
       const fromEnv = !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
@@ -673,6 +692,8 @@ export async function registerRoutes(
         configured: !!email,
         email: email || null,
         source: fromDb ? 'database' : fromEnv ? 'environment' : null,
+        allEmails: emails,
+        accountCount: emails.length,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -711,9 +732,58 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/google/service-account", async (_req, res) => {
+  app.post("/api/google/service-account/additional", async (req, res) => {
     try {
-      await db.delete(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      const { json } = req.body;
+      if (!json || typeof json !== 'string') {
+        return res.status(400).json({ message: "Service account JSON is required" });
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(json);
+      } catch {
+        return res.status(400).json({ message: "Invalid JSON format." });
+      }
+
+      if (!parsed.client_email || !parsed.private_key) {
+        return res.status(400).json({ message: "Invalid service account JSON." });
+      }
+
+      const existingEmails = await getAllServiceAccountEmails();
+      if (existingEmails.includes(parsed.client_email)) {
+        return res.status(400).json({ message: "This service account is already added." });
+      }
+
+      const idx = existingEmails.length + 1;
+      const key = `google_service_account_json_${idx}`;
+      await db.insert(appSettings).values({ key, value: json });
+
+      clearSheetClientCache();
+      res.json({ success: true, email: parsed.client_email, totalAccounts: idx });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/google/service-account", async (req, res) => {
+    try {
+      const { email } = req.body || {};
+      if (email) {
+        const { like: likeFn } = await import('drizzle-orm');
+        const rows = await db.select().from(appSettings).where(likeFn(appSettings.key, 'google_service_account_json%'));
+        for (const row of rows) {
+          try {
+            const creds = JSON.parse(row.value || '');
+            if (creds.client_email === email) {
+              await db.delete(appSettings).where(eq(appSettings.key, row.key));
+              break;
+            }
+          } catch {}
+        }
+      } else {
+        await db.delete(appSettings).where(eq(appSettings.key, 'google_service_account_json'));
+      }
       clearSheetClientCache();
       res.json({ success: true });
     } catch (error: any) {

@@ -48,6 +48,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   Plus,
   Search,
   TrendingUp,
@@ -60,6 +66,7 @@ import {
   ExternalLink,
   RefreshCw,
   Filter,
+  ChevronDown,
 } from "lucide-react";
 import { formatBDT } from "@/lib/format";
 import type { Client } from "@shared/schema";
@@ -209,8 +216,8 @@ export default function Dashboard() {
   });
 
   const syncAllMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/sync-all");
+    mutationFn: async (filter?: string) => {
+      const res = await apiRequest("POST", "/api/sync-all", filter ? { filter } : {});
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -282,15 +289,40 @@ export default function Dashboard() {
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <Button
-              variant="secondary"
-              onClick={() => syncAllMutation.mutate()}
-              disabled={syncAllMutation.isPending}
-              data-testid="button-sync-all"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncAllMutation.isPending ? "animate-spin" : ""}`} />
-              {syncAllMutation.isPending ? "Syncing..." : "Sync All"}
-            </Button>
+            <div className="flex items-center">
+              <Button
+                variant="secondary"
+                onClick={() => syncAllMutation.mutate('active-hold')}
+                disabled={syncAllMutation.isPending}
+                data-testid="button-sync-active"
+                className="rounded-r-none border-r"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncAllMutation.isPending ? "animate-spin" : ""}`} />
+                {syncAllMutation.isPending ? "Syncing..." : "Sync Active & Hold"}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    className="rounded-l-none px-2"
+                    disabled={syncAllMutation.isPending}
+                    data-testid="button-sync-dropdown"
+                  >
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => syncAllMutation.mutate('active-hold')}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Sync Active & Hold
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => syncAllMutation.mutate()}>
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Sync All Clients
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
             <Button
               variant="secondary"
               onClick={() => setShowImport(true)}

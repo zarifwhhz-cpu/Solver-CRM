@@ -1,7 +1,7 @@
 import { google, sheets_v4 } from 'googleapis';
 import { db } from './db';
 import { appSettings } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, like } from 'drizzle-orm';
 
 async function getServiceAccountJSON(): Promise<string | null> {
   try {
@@ -14,39 +14,67 @@ async function getServiceAccountJSON(): Promise<string | null> {
   return process.env.GOOGLE_SERVICE_ACCOUNT_JSON || null;
 }
 
-let cachedClient: sheets_v4.Sheets | null = null;
-let cachedJsonHash: string | null = null;
-
-export async function getGoogleSheetClient(): Promise<sheets_v4.Sheets> {
-  const json = await getServiceAccountJSON();
-  if (!json) {
-    throw new Error('Google Service Account is not configured. Go to Settings to connect your Google account, or set GOOGLE_SERVICE_ACCOUNT_JSON in .env.');
+async function getAllServiceAccountJSONs(): Promise<string[]> {
+  const results: string[] = [];
+  try {
+    const rows = await db.select().from(appSettings).where(like(appSettings.key, 'google_service_account_json%'));
+    for (const row of rows) {
+      if (row.value) results.push(row.value);
+    }
+  } catch (e) {}
+  if (results.length === 0) {
+    const env = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (env) results.push(env);
   }
+  return results;
+}
 
-  const jsonHash = json.slice(0, 100) + json.length;
-  if (cachedClient && cachedJsonHash === jsonHash) {
-    return cachedClient;
-  }
+const clientCache = new Map<string, sheets_v4.Sheets>();
+
+function buildCacheKey(json: string): string {
+  return json.slice(0, 100) + json.length;
+}
+
+async function buildSheetClient(json: string): Promise<sheets_v4.Sheets> {
+  const key = buildCacheKey(json);
+  const cached = clientCache.get(key);
+  if (cached) return cached;
 
   let credentials;
   try {
     credentials = JSON.parse(json);
   } catch (e) {
-    throw new Error('Google Service Account JSON is not valid. Please check the value in Settings or .env.');
+    throw new Error('Google Service Account JSON is not valid.');
   }
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
   const authClient = await auth.getClient();
-  cachedClient = google.sheets({ version: 'v4', auth: authClient as any });
-  cachedJsonHash = jsonHash;
-  return cachedClient;
+  const client = google.sheets({ version: 'v4', auth: authClient as any });
+  clientCache.set(key, client);
+  return client;
+}
+
+export async function getGoogleSheetClient(): Promise<sheets_v4.Sheets> {
+  const json = await getServiceAccountJSON();
+  if (!json) {
+    throw new Error('Google Service Account is not configured. Go to Settings to connect your Google account, or set GOOGLE_SERVICE_ACCOUNT_JSON in .env.');
+  }
+  return buildSheetClient(json);
+}
+
+export async function getAllGoogleSheetClients(): Promise<sheets_v4.Sheets[]> {
+  const jsons = await getAllServiceAccountJSONs();
+  if (jsons.length === 0) {
+    throw new Error('No Google Service Account configured.');
+  }
+  const clients = await Promise.all(jsons.map(j => buildSheetClient(j)));
+  return clients;
 }
 
 export function clearSheetClientCache() {
-  cachedClient = null;
-  cachedJsonHash = null;
+  clientCache.clear();
 }
 
 export async function getServiceAccountEmail(): Promise<string | null> {
@@ -58,6 +86,18 @@ export async function getServiceAccountEmail(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function getAllServiceAccountEmails(): Promise<string[]> {
+  const jsons = await getAllServiceAccountJSONs();
+  const emails: string[] = [];
+  for (const json of jsons) {
+    try {
+      const creds = JSON.parse(json);
+      if (creds.client_email) emails.push(creds.client_email);
+    } catch {}
+  }
+  return emails;
 }
 
 export function extractSheetId(url: string): string | null {
