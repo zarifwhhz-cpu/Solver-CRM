@@ -483,6 +483,146 @@ function CampaignView({ account }: { account: AdAccountSafe }) {
   );
 }
 
+function FacebookSettingsCard() {
+  const [appId, setAppId] = useState("");
+  const [appSecret, setAppSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const { toast } = useToast();
+
+  const { data: settings, refetch } = useQuery<{ appId: string; hasSecret: boolean; fromEnv: boolean }>({
+    queryKey: ["/api/facebook/settings"],
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setAppId(settings.appId || "");
+    }
+  }, [settings]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/facebook/settings", {
+        appId: appId.trim(),
+        appSecret: appSecret.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Facebook credentials saved" });
+      setAppSecret("");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/facebook/status"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/facebook/settings");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Facebook credentials removed" });
+      setAppId("");
+      setAppSecret("");
+      refetch();
+      queryClient.invalidateQueries({ queryKey: ["/api/facebook/status"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const isConfigured = settings?.appId && settings?.hasSecret;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3 cursor-pointer" onClick={() => setExpanded(!expanded)}>
+        <CardTitle className="text-base flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <SiFacebook className="w-5 h-5 text-[#1877F2]" />
+            Facebook App Settings
+            {isConfigured && <Badge variant="default" className="bg-green-600 text-xs">Configured</Badge>}
+            {!isConfigured && <Badge variant="secondary" className="text-xs">Not Set</Badge>}
+          </div>
+          <span className="text-muted-foreground text-sm">{expanded ? "▲" : "▼"}</span>
+        </CardTitle>
+      </CardHeader>
+      {expanded && (
+        <CardContent className="space-y-4">
+          {settings?.fromEnv && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 text-sm">
+              <AlertCircle className="w-4 h-4 text-blue-600" />
+              <span className="text-blue-800 dark:text-blue-200">Credentials are loaded from environment variables.</span>
+            </div>
+          )}
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Facebook App ID</label>
+            <Input
+              placeholder="e.g. 2263228397534581"
+              value={appId}
+              onChange={e => setAppId(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-1.5 block">Facebook App Secret</label>
+            <div className="relative">
+              <Input
+                type={showSecret ? "text" : "password"}
+                placeholder={settings?.hasSecret ? "••••••••••••••• (saved)" : "Paste your App Secret"}
+                value={appSecret}
+                onChange={e => setAppSecret(e.target.value)}
+                className="pr-10"
+              />
+              <Button
+                type="button" variant="ghost" size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
+                onClick={() => setShowSecret(!showSecret)}
+              >
+                {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Get from Meta Developers → Your App → Settings → Basic → App Secret
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !appId.trim() || (!appSecret.trim() && !settings?.hasSecret)}
+              className="bg-[#1877F2] hover:bg-[#166FE5] text-white"
+            >
+              {saveMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+              Save Credentials
+            </Button>
+            {isConfigured && (
+              <Button
+                variant="outline"
+                onClick={() => removeMutation.mutate()}
+                disabled={removeMutation.isPending}
+              >
+                <Trash2 className="w-4 h-4 mr-1" /> Remove
+              </Button>
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground space-y-1 pt-2 border-t">
+            <p className="font-medium">Setup instructions:</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>Go to <a href="https://developers.facebook.com/apps/" target="_blank" rel="noreferrer" className="text-blue-600 underline">Meta Developers</a> and create/select your app</li>
+              <li>Copy the App ID and App Secret from Settings → Basic</li>
+              <li>Under Facebook Login → Settings, add your redirect URI</li>
+              <li>Add required permissions: ads_read, ads_management, business_management</li>
+            </ol>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 export default function AdAccounts() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -543,6 +683,8 @@ export default function AdAccounts() {
             <FacebookLoginButton />
           </div>
         </div>
+
+        <FacebookSettingsCard />
 
         {isLoading ? (
           <div className="space-y-4">

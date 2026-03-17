@@ -28,15 +28,31 @@ function getBaseUrl(req: any): string {
   return `${proto}://${host}`;
 }
 
+async function getFacebookCredentials(): Promise<{ appId: string | null; appSecret: string | null }> {
+  const envId = process.env.FACEBOOK_APP_ID || null;
+  const envSecret = process.env.FACEBOOK_APP_SECRET || null;
+  if (envId && envSecret) return { appId: envId, appSecret: envSecret };
+
+  try {
+    const idRows = await db.select().from(appSettings).where(eq(appSettings.key, 'facebook_app_id'));
+    const secretRows = await db.select().from(appSettings).where(eq(appSettings.key, 'facebook_app_secret'));
+    const dbId = idRows.length > 0 ? idRows[0].value : null;
+    const dbSecret = secretRows.length > 0 ? secretRows[0].value : null;
+    return { appId: dbId || envId, appSecret: dbSecret || envSecret };
+  } catch {
+    return { appId: envId, appSecret: envSecret };
+  }
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
 
-  app.get("/api/facebook/login", (req, res) => {
-    const appId = process.env.FACEBOOK_APP_ID;
+  app.get("/api/facebook/login", async (req, res) => {
+    const { appId } = await getFacebookCredentials();
     if (!appId) {
-      return res.status(500).json({ message: "Facebook App ID not configured. Please set the FACEBOOK_APP_ID environment variable." });
+      return res.status(500).json({ message: "Facebook App ID not configured. Go to Ad Accounts and set up your Facebook App credentials." });
     }
 
     const state = crypto.randomBytes(32).toString("hex");
@@ -56,19 +72,18 @@ export async function registerRoutes(
       const { code, state, error, error_description } = req.query;
 
       if (error) {
-        return res.redirect(`/?fb_error=${encodeURIComponent(String(error_description || error))}`);
+        return res.redirect(`/ad-accounts?fb_error=${encodeURIComponent(String(error_description || error))}`);
       }
 
       if (!code || !state || !oauthStates.has(String(state))) {
-        return res.redirect("/?fb_error=Invalid+or+expired+login+session.+Please+try+again.");
+        return res.redirect("/ad-accounts?fb_error=Invalid+or+expired+login+session.+Please+try+again.");
       }
 
       oauthStates.delete(String(state));
 
-      const appId = process.env.FACEBOOK_APP_ID;
-      const appSecret = process.env.FACEBOOK_APP_SECRET;
+      const { appId, appSecret } = await getFacebookCredentials();
       if (!appId || !appSecret) {
-        return res.redirect("/?fb_error=Facebook+App+credentials+not+configured.");
+        return res.redirect("/ad-accounts?fb_error=Facebook+App+credentials+not+configured.+Set+them+up+in+Ad+Accounts+settings.");
       }
 
       const baseUrl = getBaseUrl(req);
@@ -80,7 +95,7 @@ export async function registerRoutes(
       const tokenData = await tokenRes.json() as any;
 
       if (tokenData.error) {
-        return res.redirect(`/?fb_error=${encodeURIComponent(tokenData.error.message || "Failed to get access token")}`);
+        return res.redirect(`/ad-accounts?fb_error=${encodeURIComponent(tokenData.error.message || "Failed to get access token")}`);
       }
 
       const shortToken = tokenData.access_token;
@@ -116,13 +131,71 @@ export async function registerRoutes(
 
       res.redirect(`/ad-accounts?fb_success=true&discovered=${discovered.length}&added=${addedCount}`);
     } catch (error: any) {
-      res.redirect(`/?fb_error=${encodeURIComponent(error.message || "Login failed")}`);
+      res.redirect(`/ad-accounts?fb_error=${encodeURIComponent(error.message || "Login failed")}`);
     }
   });
 
-  app.get("/api/facebook/status", (_req, res) => {
-    const configured = !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET);
-    res.json({ configured });
+  app.get("/api/facebook/status", async (_req, res) => {
+    const { appId, appSecret } = await getFacebookCredentials();
+    const configured = !!(appId && appSecret);
+    res.json({ configured, hasAppId: !!appId, hasAppSecret: !!appSecret });
+  });
+
+  app.get("/api/facebook/settings", async (_req, res) => {
+    try {
+      const { appId, appSecret } = await getFacebookCredentials();
+      res.json({
+        appId: appId || "",
+        hasSecret: !!appSecret,
+        fromEnv: !!(process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/facebook/settings", async (req, res) => {
+    try {
+      const { appId, appSecret } = req.body;
+      if (!appId) {
+        return res.status(400).json({ message: "App ID is required" });
+      }
+
+      const existingSecret = await db.select().from(appSettings).where(eq(appSettings.key, 'facebook_app_secret'));
+      const hasExistingSecret = existingSecret.length > 0 && !!existingSecret[0].value;
+
+      if (!appSecret && !hasExistingSecret && !process.env.FACEBOOK_APP_SECRET) {
+        return res.status(400).json({ message: "App Secret is required" });
+      }
+
+      const updates: [string, string][] = [["facebook_app_id", appId]];
+      if (appSecret) {
+        updates.push(["facebook_app_secret", appSecret]);
+      }
+
+      for (const [key, value] of updates) {
+        const existing = await db.select().from(appSettings).where(eq(appSettings.key, key));
+        if (existing.length > 0) {
+          await db.update(appSettings).set({ value }).where(eq(appSettings.key, key));
+        } else {
+          await db.insert(appSettings).values({ key, value });
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/facebook/settings", async (_req, res) => {
+    try {
+      await db.delete(appSettings).where(eq(appSettings.key, 'facebook_app_id'));
+      await db.delete(appSettings).where(eq(appSettings.key, 'facebook_app_secret'));
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
   });
 
   app.get("/api/clients", async (_req, res) => {
