@@ -12,6 +12,7 @@ import AIAssistant from "@/pages/ai-assistant";
 import AdAccounts from "@/pages/ad-accounts";
 import Campaigns from "@/pages/campaigns";
 import SettingsPage from "@/pages/settings";
+import ActionNeededPage from "@/pages/action-needed";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -24,6 +25,7 @@ function Router() {
       <Route path="/ad-accounts" component={AdAccounts} />
       <Route path="/campaigns" component={Campaigns} />
       <Route path="/settings" component={SettingsPage} />
+      <Route path="/action-needed" component={ActionNeededPage} />
       <Route component={NotFound} />
     </Switch>
   );

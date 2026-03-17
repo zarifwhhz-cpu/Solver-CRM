@@ -394,7 +394,7 @@ export default function Dashboard() {
         {actionNeeded && actionNeeded.summary.total > 0 && (
           <div
             className={`rounded-lg border px-4 py-3 flex items-center justify-between cursor-pointer ${actionNeeded.summary.high > 0 ? 'border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/30' : 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/30'}`}
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate('/action-needed')}
           >
             <div className="flex items-center gap-3">
               <AlertTriangle className={`h-4 w-4 ${actionNeeded.summary.high > 0 ? 'text-red-500' : 'text-amber-500'}`} />
