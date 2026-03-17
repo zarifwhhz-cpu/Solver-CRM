@@ -17,7 +17,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 4. **Bulk Import**: Import clients from a main Google Sheet
 5. **Dashboard**: Summary stats with filtering by status, search, and executive
 6. **Bulk Payments**: Parse WhatsApp-format payment notes, process multiple payments with duplicate detection
-7. **AI Assistant**: Natural language interface to query data, add payments, sync sheets, update statuses — supports DeepSeek, Gemini, OpenAI, and OpenRouter
+7. **AI Assistant**: Natural language interface to query data, add/delete/update clients (single or bulk), add payments, sync sheets, update statuses — supports DeepSeek, Gemini, OpenAI, and OpenRouter
 8. **Ad Platform Integration**: Connect Facebook/Meta, Google Ads, and TikTok ad accounts to view campaigns, spend, and performance metrics live
 11. **Campaigns Page**: Dedicated view to browse all campaigns across connected ad accounts with search, status/platform/account filtering, and sortable columns
 9. **Facebook OAuth Login**: One-click "Login with Facebook" to auto-discover and connect all ad accounts

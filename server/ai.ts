@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { appendToSheet } from "./googleSheets";
+import { appendToSheet, extractSheetId } from "./googleSheets";
 
 interface AIMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -176,6 +176,96 @@ const TOOLS = [
           executive: { type: "string", description: "New executive name (Jisan or Saif)" },
         },
         required: ["clientId", "executive"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_client",
+      description: "Add a single new client to the system. Use bulk_add_clients for adding multiple clients at once.",
+      parameters: {
+        type: "object",
+        properties: {
+          clientId: { type: "number", description: "Unique client ID number (e.g. 1500)" },
+          name: { type: "string", description: "Client name" },
+          status: { type: "string", enum: ["Active", "Inactive", "Hold"], description: "Client status (default: Inactive)" },
+          executive: { type: "string", description: "Assigned executive name (e.g. Jisan, Saif)" },
+          adsAccount: { type: "string", description: "Ads account name (optional)" },
+          googleSheetUrl: { type: "string", description: "Google Sheet URL for this client (optional)" },
+          balance: { type: "string", description: "Starting balance in BDT (default: 0)" },
+          totalDue: { type: "string", description: "Total due amount (default: 0)" },
+          campaignDue: { type: "string", description: "Campaign due amount (default: 0)" },
+        },
+        required: ["clientId", "name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "bulk_add_clients",
+      description: "Add multiple clients at once. Provide an array of client objects. Each client needs at least clientId and name. Skips clients that already exist (by clientId). Use this when the user wants to add several clients in one go.",
+      parameters: {
+        type: "object",
+        properties: {
+          clients: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                clientId: { type: "number", description: "Unique client ID number" },
+                name: { type: "string", description: "Client name" },
+                status: { type: "string", enum: ["Active", "Inactive", "Hold"], description: "Client status (default: Inactive)" },
+                executive: { type: "string", description: "Assigned executive (e.g. Jisan, Saif)" },
+                adsAccount: { type: "string", description: "Ads account name" },
+                googleSheetUrl: { type: "string", description: "Google Sheet URL" },
+                balance: { type: "string", description: "Starting balance (default: 0)" },
+                totalDue: { type: "string", description: "Total due (default: 0)" },
+                campaignDue: { type: "string", description: "Campaign due (default: 0)" },
+              },
+              required: ["clientId", "name"],
+            },
+            description: "Array of client objects to add",
+          },
+        },
+        required: ["clients"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "delete_client",
+      description: "Delete a client and all their transactions from the system. This is irreversible.",
+      parameters: {
+        type: "object",
+        properties: {
+          clientId: { type: "number", description: "The client's custom ID to delete" },
+        },
+        required: ["clientId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_client",
+      description: "Update any field of a client (name, balance, totalDue, campaignDue, status, executive, adsAccount, googleSheetUrl). Only include the fields you want to change.",
+      parameters: {
+        type: "object",
+        properties: {
+          clientId: { type: "number", description: "The client's custom ID" },
+          name: { type: "string", description: "New client name" },
+          balance: { type: "string", description: "New balance amount" },
+          totalDue: { type: "string", description: "New total due amount" },
+          campaignDue: { type: "string", description: "New campaign due amount" },
+          status: { type: "string", enum: ["Active", "Inactive", "Hold"], description: "New status" },
+          executive: { type: "string", description: "New executive name" },
+          adsAccount: { type: "string", description: "New ads account name" },
+          googleSheetUrl: { type: "string", description: "New Google Sheet URL" },
+        },
+        required: ["clientId"],
       },
     },
   },
@@ -386,6 +476,112 @@ async function executeTool(name: string, args: any): Promise<string> {
         return JSON.stringify({ success: true, client: updated?.name, newExecutive: args.executive.trim() });
       }
 
+      case "add_client": {
+        if (!args.clientId || !args.name) {
+          return JSON.stringify({ error: "clientId and name are required" });
+        }
+        const existing = await storage.getClientByClientId(args.clientId);
+        if (existing) {
+          return JSON.stringify({ error: `Client with ID ${args.clientId} already exists: ${existing.name}` });
+        }
+        let googleSheetId: string | null = null;
+        if (args.googleSheetUrl) {
+          googleSheetId = extractSheetId(args.googleSheetUrl) || null;
+        }
+        const newClient = await storage.createClient({
+          clientId: args.clientId,
+          name: args.name,
+          status: args.status || "Inactive",
+          executive: args.executive || "",
+          adsAccount: args.adsAccount || "",
+          googleSheetUrl: args.googleSheetUrl || null,
+          googleSheetId,
+          balance: args.balance || "0",
+          totalDue: args.totalDue || "0",
+          campaignDue: args.campaignDue || "0",
+        });
+        return JSON.stringify({ success: true, client: newClient.name, clientId: newClient.clientId, id: newClient.id });
+      }
+
+      case "bulk_add_clients": {
+        if (!args.clients || !Array.isArray(args.clients) || args.clients.length === 0) {
+          return JSON.stringify({ error: "clients array is required and must not be empty" });
+        }
+        const results: Array<{ clientId: number; name: string; status: string }> = [];
+        const skipped: Array<{ clientId: number; reason: string }> = [];
+
+        for (const c of args.clients) {
+          if (!c.clientId || !c.name) {
+            skipped.push({ clientId: c.clientId || 0, reason: "Missing clientId or name" });
+            continue;
+          }
+          const existing = await storage.getClientByClientId(c.clientId);
+          if (existing) {
+            skipped.push({ clientId: c.clientId, reason: `Already exists as "${existing.name}"` });
+            continue;
+          }
+          let googleSheetId: string | null = null;
+          if (c.googleSheetUrl) {
+            googleSheetId = extractSheetId(c.googleSheetUrl) || null;
+          }
+          try {
+            const newClient = await storage.createClient({
+              clientId: c.clientId,
+              name: c.name,
+              status: c.status || "Inactive",
+              executive: c.executive || "",
+              adsAccount: c.adsAccount || "",
+              googleSheetUrl: c.googleSheetUrl || null,
+              googleSheetId,
+              balance: c.balance || "0",
+              totalDue: c.totalDue || "0",
+              campaignDue: c.campaignDue || "0",
+            });
+            results.push({ clientId: newClient.clientId, name: newClient.name, status: "added" });
+          } catch (err: any) {
+            skipped.push({ clientId: c.clientId, reason: err.message });
+          }
+        }
+
+        return JSON.stringify({
+          success: true,
+          added: results.length,
+          skipped: skipped.length,
+          total: args.clients.length,
+          addedClients: results,
+          skippedClients: skipped,
+        });
+      }
+
+      case "delete_client": {
+        const client = await storage.getClientByClientId(args.clientId);
+        if (!client) return JSON.stringify({ error: `Client ${args.clientId} not found` });
+        await storage.deleteClient(client.id);
+        return JSON.stringify({ success: true, deletedClient: client.name, clientId: client.clientId });
+      }
+
+      case "update_client": {
+        const client = await storage.getClientByClientId(args.clientId);
+        if (!client) return JSON.stringify({ error: `Client ${args.clientId} not found` });
+        const updates: Record<string, any> = {};
+        if (args.name !== undefined) updates.name = args.name;
+        if (args.balance !== undefined) updates.balance = args.balance;
+        if (args.totalDue !== undefined) updates.totalDue = args.totalDue;
+        if (args.campaignDue !== undefined) updates.campaignDue = args.campaignDue;
+        if (args.status !== undefined) updates.status = args.status;
+        if (args.executive !== undefined) updates.executive = args.executive;
+        if (args.adsAccount !== undefined) updates.adsAccount = args.adsAccount;
+        if (args.googleSheetUrl !== undefined) {
+          updates.googleSheetUrl = args.googleSheetUrl;
+          updates.googleSheetId = extractSheetId(args.googleSheetUrl) || null;
+        }
+        if (Object.keys(updates).length === 0) {
+          return JSON.stringify({ error: "No fields to update provided" });
+        }
+        const updated = await storage.updateClient(client.id, updates);
+        return JSON.stringify({ success: true, client: updated?.name, updatedFields: Object.keys(updates) });
+      }
+
       default:
         return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
@@ -420,14 +616,18 @@ Key facts about this system:
 
 You can:
 - Look up any client data, balances, transactions, and stats
+- Add single clients or bulk add multiple clients at once
+- Delete clients and update any client field (name, balance, status, executive, ads account, sheet URL, etc.)
 - Add payments and update client information
 - Sync data from Google Sheets
 - Filter clients by status, executive, or balance
 - Provide summaries and insights about the business
 
+When the user wants to add multiple clients, use the bulk_add_clients tool with an array of client objects. Each client needs at least a clientId (number) and name.
+When asked to perform an action that could modify data (payments, status changes, adding/deleting clients, syncs), confirm what you're about to do before executing.
+
 When providing financial data, always format BDT amounts with ৳ symbol and USD with $ symbol.
-Be concise but thorough. When asked about multiple clients, present data in a clear organized format.
-If asked to perform an action that could modify data (payments, status changes, syncs), confirm what you're about to do before executing.`;
+Be concise but thorough. When asked about multiple clients, present data in a clear organized format.`;
 
 export async function processAIChat(
   messages: AIMessage[],
