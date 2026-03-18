@@ -674,7 +674,7 @@ export default function AdAccounts() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ad-accounts"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+      queryClient.removeQueries({ queryKey: ["/api/campaigns"] });
     },
     onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });

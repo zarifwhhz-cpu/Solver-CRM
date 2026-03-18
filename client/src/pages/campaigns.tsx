@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { extractClientCode } from "@shared/campaignUtils";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -111,6 +111,16 @@ export default function Campaigns() {
   }, [clients]);
 
   const enabledAccounts = useMemo(() => accounts?.filter(a => a.showInCampaigns) || [], [accounts]);
+
+  useEffect(() => {
+    if (selectedAccountIds.length > 0) {
+      const enabledIds = new Set(enabledAccounts.map(a => a.id));
+      const filtered = selectedAccountIds.filter(id => enabledIds.has(id));
+      if (filtered.length !== selectedAccountIds.length) {
+        setSelectedAccountIds(filtered.length === enabledAccounts.length ? [] : filtered);
+      }
+    }
+  }, [enabledAccounts]);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
