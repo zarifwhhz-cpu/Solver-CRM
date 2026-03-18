@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts, appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails, writeMainSheetCampaignData } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
@@ -1131,6 +1131,108 @@ export async function registerRoutes(
       }
 
       res.json({ campaigns: allCampaigns, errors, totalAccounts: accounts.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/campaigns/sync-to-clients", async (req, res) => {
+    try {
+      const { mainSheetId, dateRange: reqDateRange } = req.body || {};
+      const since = reqDateRange?.since;
+      const until = reqDateRange?.until;
+      const dateRange = since && until ? { since, until } : undefined;
+
+      const accounts = await db.select().from(adAccounts).where(eq(adAccounts.showInCampaigns, true));
+      if (accounts.length === 0) {
+        return res.json({ success: true, totalCampaigns: 0, matched: 0, unmatched: 0, clientsUpdated: 0, clientUpdates: [], sheetWriteResult: null, errors: [], message: "No ad accounts enabled for campaigns" });
+      }
+
+      const allCampaigns: Array<{
+        name: string; spend: string; platform: string; accountName: string;
+      }> = [];
+      const fetchErrors: Array<{ accountName: string; error: string }> = [];
+
+      for (const acct of accounts) {
+        try {
+          const data = await fetchCampaigns(acct.platform, acct.accessToken, acct.accountId, dateRange);
+          for (const c of data.campaigns) {
+            allCampaigns.push({
+              name: c.name,
+              spend: c.spend || "0",
+              platform: acct.platform,
+              accountName: data.account.name || acct.accountName || acct.accountId,
+            });
+          }
+        } catch (err: any) {
+          fetchErrors.push({ accountName: acct.accountName || acct.accountId, error: err.message });
+        }
+      }
+
+      const allClients = await storage.getClients();
+      const activeHoldClients = allClients.filter(c => c.status === "Active" || c.status === "Hold");
+      const clientCodes = activeHoldClients.map(c => c.clientId);
+
+      function extractClientCode(campaignName: string): number | null {
+        for (const code of clientCodes) {
+          const codeStr = String(code);
+          const regex = new RegExp(`(?:^|[^0-9])${codeStr}(?:$|[^0-9])`);
+          if (regex.test(campaignName)) return code;
+        }
+        return null;
+      }
+
+      const spendByClient = new Map<number, number>();
+      const campaignsByClient = new Map<number, string[]>();
+      let unmatchedCount = 0;
+      const unmatchedCampaigns: string[] = [];
+
+      for (const camp of allCampaigns) {
+        const clientCode = extractClientCode(camp.name);
+        if (clientCode !== null) {
+          const prev = spendByClient.get(clientCode) || 0;
+          spendByClient.set(clientCode, prev + parseFloat(camp.spend || "0"));
+          const names = campaignsByClient.get(clientCode) || [];
+          names.push(camp.name);
+          campaignsByClient.set(clientCode, names);
+        } else {
+          unmatchedCount++;
+          if (unmatchedCampaigns.length < 10) unmatchedCampaigns.push(camp.name);
+        }
+      }
+
+      const clientUpdates: Array<{ clientId: number; campaignDue: string; campaignCount: number }> = [];
+      for (const client of activeHoldClients) {
+        const totalSpend = spendByClient.get(client.clientId) || 0;
+        const campaignDue = totalSpend.toFixed(2);
+        await storage.updateClient(client.id, { campaignDue });
+        const campaigns = campaignsByClient.get(client.clientId) || [];
+        clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length });
+      }
+
+      let sheetWriteResult = null;
+      if (mainSheetId) {
+        try {
+          sheetWriteResult = await writeMainSheetCampaignData(
+            mainSheetId,
+            clientUpdates.map(u => ({ clientId: u.clientId, campaignDue: u.campaignDue }))
+          );
+        } catch (err: any) {
+          sheetWriteResult = { error: err.message };
+        }
+      }
+
+      res.json({
+        success: true,
+        totalCampaigns: allCampaigns.length,
+        matched: allCampaigns.length - unmatchedCount,
+        unmatched: unmatchedCount,
+        unmatchedSample: unmatchedCampaigns,
+        clientsUpdated: clientUpdates.length,
+        clientUpdates,
+        sheetWriteResult,
+        errors: fetchErrors,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

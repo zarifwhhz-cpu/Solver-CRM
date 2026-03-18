@@ -37,7 +37,7 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 ## Data Model
 - `clients`: id, clientId (custom), name, balance, totalDue, campaignDue, status, executive, adsAccount, googleSheetUrl, googleSheetId
 - `transactions`: id, clientId (FK), date, bdtAmount, usdAmount, platform, remainingBdt, platformSpend, paymentNote
-- `adAccounts`: id, platform, accountId, accountName, accessToken, status
+- `adAccounts`: id, platform, accountId, accountName, accessToken, status, showInCampaigns
 - `aiSettings`: id, provider, apiKey, model
 
 ## API Routes
@@ -65,6 +65,8 @@ A web-based CRM for managing Facebook/TikTok ad campaign clients. Integrates wit
 - `POST /api/ad-accounts/discover` - Auto-discover accounts from access token
 - `PUT /api/ad-accounts/:id` - Update account name, token, or status
 - `DELETE /api/ad-accounts/:id` - Remove an ad account
+- `GET /api/campaigns` - Fetch all campaigns from enabled ad accounts with optional date range
+- `POST /api/campaigns/sync-to-clients` - Sync campaign spend to client records (matches campaigns to clients by ID code in campaign name, updates campaignDue, optionally writes to main Google Sheet)
 - `GET /api/ad-accounts/:id/campaigns` - Fetch live campaign data from the platform API
 - `GET /api/facebook/login` - Start Facebook OAuth flow
 - `GET /api/facebook/callback` - Handle Facebook OAuth callback

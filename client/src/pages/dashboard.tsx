@@ -242,6 +242,24 @@ export default function Dashboard() {
     },
   });
 
+  const syncCampaignsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/campaigns/sync-to-clients", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({
+        title: "Campaign sync complete",
+        description: `${data.totalCampaigns} campaigns found, ${data.matched} matched to ${data.clientsUpdated} clients`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Campaign sync failed", description: error.message, variant: "destructive" });
+    },
+  });
+
   const importMutation = useMutation({
     mutationFn: async (data: z.infer<typeof importSheetSchema>) => {
       const res = await apiRequest("POST", "/api/import-sheet", data);
@@ -332,6 +350,15 @@ export default function Dashboard() {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
+            <Button
+              variant="secondary"
+              onClick={() => syncCampaignsMutation.mutate()}
+              disabled={syncCampaignsMutation.isPending}
+              data-testid="button-sync-campaigns"
+            >
+              <Target className={`w-4 h-4 ${syncCampaignsMutation.isPending ? "animate-spin" : ""}`} />
+              {syncCampaignsMutation.isPending ? "Syncing..." : "Sync Campaigns"}
+            </Button>
             <Button
               variant="secondary"
               onClick={() => setShowImport(true)}
@@ -546,6 +573,7 @@ export default function Dashboard() {
                   <TableHead>Name</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                   <TableHead className="text-right">Total Due</TableHead>
+                  <TableHead className="text-right">Campaign Due</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Executive</TableHead>
                   <TableHead className="hidden lg:table-cell">Ads Account</TableHead>
@@ -556,6 +584,7 @@ export default function Dashboard() {
                 {filteredClients.map((client) => {
                   const bal = parseFloat(client.balance) || 0;
                   const due = parseFloat(client.totalDue) || 0;
+                  const campDue = parseFloat(client.campaignDue) || 0;
                   return (
                     <TableRow
                       key={client.id}
@@ -576,6 +605,11 @@ export default function Dashboard() {
                         className={`text-right font-mono text-sm ${due < 0 ? "text-destructive" : ""}`}
                       >
                         {formatBDT(client.totalDue)}
+                      </TableCell>
+                      <TableCell
+                        className={`text-right font-mono text-sm ${campDue > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                      >
+                        {campDue > 0 ? formatBDT(client.campaignDue) : "—"}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={client.status} />

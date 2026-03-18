@@ -366,3 +366,57 @@ export async function appendToSheet(spreadsheetId: string, transaction: {
 
   console.log(`[Sheet Write] Wrote to row ${targetRow} in '${pnlSheet}', columns A-D and G`);
 }
+
+export async function writeMainSheetCampaignData(
+  spreadsheetId: string,
+  clientUpdates: Array<{ clientId: number; campaignDue: string }>
+) {
+  const sheets = await getGoogleSheetClient();
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
+  const sheetNames = meta.data.sheets?.map(s => s.properties?.title) || [];
+  const hasDashboard = sheetNames.includes('Client Dashboard');
+
+  const range = hasDashboard ? "'Client Dashboard'!A1:K200" : 'A1:K200';
+  const response = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+  const rows = response.data.values || [];
+
+  const row0 = rows[0] || [];
+  const row1 = rows[1] || [];
+  const hasStatusRow0 = row0.some((h: string) => h?.toLowerCase().includes('status'));
+  const hasStatusRow1 = row1.some((h: string) => h?.toLowerCase().includes('status'));
+  const hasStatus = hasStatusRow0 || hasStatusRow1;
+  const dataStart = hasStatus ? (hasStatusRow0 ? 2 : 3) : 1;
+
+  const updateMap = new Map(clientUpdates.map(u => [u.clientId, u.campaignDue]));
+  const writeData: { range: string; values: any[][] }[] = [];
+  const sheetPrefix = hasDashboard ? "'Client Dashboard'!" : '';
+
+  for (let i = dataStart; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length < 2) continue;
+    const clientIdRaw = parseInt(row[0]?.trim());
+    if (isNaN(clientIdRaw)) continue;
+
+    const newCampaignDue = updateMap.get(clientIdRaw);
+    if (newCampaignDue !== undefined) {
+      writeData.push({
+        range: `${sheetPrefix}E${i + 1}`,
+        values: [[newCampaignDue]],
+      });
+    }
+  }
+
+  if (writeData.length > 0) {
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: writeData,
+      },
+    });
+  }
+
+  console.log(`[Sheet Write] Updated campaign due for ${writeData.length} clients in main sheet`);
+  return { updated: writeData.length };
+}
