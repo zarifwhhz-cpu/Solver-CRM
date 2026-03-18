@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { db } from "./db";
 import { insertClientSchema, insertTransactionSchema, transactions as transactionsTable, aiSettings, adAccounts, appSettings } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails, writeMainSheetCampaignData } from "./googleSheets";
+import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails, writeMainSheetCampaignData, resolvePnlSheetName } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
 import { z } from "zod";
@@ -440,6 +440,8 @@ export async function registerRoutes(
 
       const sheetId = extractSheetId(parsed.data.url);
       if (!sheetId) return res.status(400).json({ message: "Invalid Google Sheet URL format" });
+
+      await db.insert(appSettings).values({ key: 'main_sheet_id', value: sheetId }).onConflictDoUpdate({ target: appSettings.key, set: { value: sheetId } });
 
       const clientsData = await readMainSheetClients(sheetId);
       let imported = 0;
@@ -1138,7 +1140,7 @@ export async function registerRoutes(
 
   app.post("/api/campaigns/sync-to-clients", async (req, res) => {
     try {
-      const { mainSheetId, dateRange: reqDateRange } = req.body || {};
+      const { dateRange: reqDateRange } = req.body || {};
       const since = reqDateRange?.since;
       const until = reqDateRange?.until;
       const dateRange = since && until ? { since, until } : undefined;
@@ -1149,7 +1151,7 @@ export async function registerRoutes(
       }
 
       const allCampaigns: Array<{
-        name: string; spend: string; platform: string; accountName: string;
+        name: string; spend: string; status: string; platform: string; accountName: string;
       }> = [];
       const fetchErrors: Array<{ accountName: string; error: string }> = [];
 
@@ -1160,6 +1162,7 @@ export async function registerRoutes(
             allCampaigns.push({
               name: c.name,
               spend: c.spend || "0",
+              status: c.status,
               platform: acct.platform,
               accountName: data.account.name || acct.accountName || acct.accountId,
             });
@@ -1171,7 +1174,7 @@ export async function registerRoutes(
 
       const allClients = await storage.getClients();
       const activeHoldClients = allClients.filter(c => c.status === "Active" || c.status === "Hold");
-      const clientCodes = activeHoldClients.map(c => c.clientId);
+      const clientCodes = activeHoldClients.map(c => c.clientId).sort((a, b) => b - a);
 
       function extractClientCode(campaignName: string): number | null {
         for (const code of clientCodes) {
@@ -1183,7 +1186,7 @@ export async function registerRoutes(
       }
 
       const spendByClient = new Map<number, number>();
-      const campaignsByClient = new Map<number, string[]>();
+      const campaignsByClient = new Map<number, Array<{ name: string; spend: string; status: string }>>();
       let unmatchedCount = 0;
       const unmatchedCampaigns: string[] = [];
 
@@ -1192,29 +1195,51 @@ export async function registerRoutes(
         if (clientCode !== null) {
           const prev = spendByClient.get(clientCode) || 0;
           spendByClient.set(clientCode, prev + parseFloat(camp.spend || "0"));
-          const names = campaignsByClient.get(clientCode) || [];
-          names.push(camp.name);
-          campaignsByClient.set(clientCode, names);
+          const list = campaignsByClient.get(clientCode) || [];
+          list.push({ name: camp.name, spend: camp.spend, status: camp.status });
+          campaignsByClient.set(clientCode, list);
         } else {
           unmatchedCount++;
           if (unmatchedCampaigns.length < 10) unmatchedCampaigns.push(camp.name);
         }
       }
 
-      const clientUpdates: Array<{ clientId: number; campaignDue: string; campaignCount: number }> = [];
-      for (const client of activeHoldClients) {
+      const clientUpdates: Array<{ clientId: number; campaignDue: string; campaignCount: number; activeCampaigns: number }> = [];
+      const sheetsClients = await getAllGoogleSheetClients().catch(() => [] as any[]);
+      const numAccounts = sheetsClients.length;
+
+      for (let idx = 0; idx < activeHoldClients.length; idx++) {
+        const client = activeHoldClients[idx];
         const totalSpend = spendByClient.get(client.clientId) || 0;
         const campaignDue = totalSpend.toFixed(2);
         await storage.updateClient(client.id, { campaignDue });
         const campaigns = campaignsByClient.get(client.clientId) || [];
-        clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length });
+        const activeCampaigns = campaigns.filter(c => c.status === "ACTIVE").length;
+        clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
+
+        if (client.googleSheetId && numAccounts > 0 && totalSpend > 0) {
+          try {
+            const sheetsClient = sheetsClients[idx % numAccounts];
+            const { pnlSheet } = await resolvePnlSheetName(sheetsClient, client.googleSheetId);
+            await sheetsClient.spreadsheets.values.update({
+              spreadsheetId: client.googleSheetId,
+              range: `'${pnlSheet}'!F2`,
+              valueInputOption: 'USER_ENTERED',
+              requestBody: { values: [[campaignDue]] },
+            });
+          } catch (err: any) {
+            console.error(`[Campaign Sync] Failed to update PNL sheet for ${client.name}: ${err.message}`);
+          }
+        }
       }
 
       let sheetWriteResult = null;
-      if (mainSheetId) {
+      const mainSheetRow = await db.select().from(appSettings).where(eq(appSettings.key, 'main_sheet_id'));
+      const storedMainSheetId = mainSheetRow.length > 0 ? mainSheetRow[0].value : null;
+      if (storedMainSheetId) {
         try {
           sheetWriteResult = await writeMainSheetCampaignData(
-            mainSheetId,
+            storedMainSheetId,
             clientUpdates.map(u => ({ clientId: u.clientId, campaignDue: u.campaignDue }))
           );
         } catch (err: any) {

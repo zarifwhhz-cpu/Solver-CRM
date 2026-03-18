@@ -111,7 +111,7 @@ function cleanAmount(value: string): string {
   return cleaned || "0";
 }
 
-async function resolvePnlSheetName(sheets: sheets_v4.Sheets, spreadsheetId: string): Promise<{ pnlSheet: string; sheetId: number }> {
+export async function resolvePnlSheetName(sheets: sheets_v4.Sheets, spreadsheetId: string): Promise<{ pnlSheet: string; sheetId: number }> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties' });
   const sheetsList = meta.data.sheets || [];
   const pnlSheetMeta = sheetsList.find(s => s.properties?.title === 'PNL') || sheetsList[0];

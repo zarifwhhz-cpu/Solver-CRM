@@ -250,9 +250,10 @@ export default function Dashboard() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      const activeCount = (data.clientUpdates || []).reduce((sum: number, u: any) => sum + (u.activeCampaigns || 0), 0);
       toast({
         title: "Campaign sync complete",
-        description: `${data.totalCampaigns} campaigns found, ${data.matched} matched to ${data.clientsUpdated} clients`,
+        description: `${data.totalCampaigns} campaigns found, ${data.matched} matched to ${data.clientsUpdated} clients (${activeCount} active)${data.sheetWriteResult?.updated ? `, ${data.sheetWriteResult.updated} sheet rows updated` : ""}`,
       });
     },
     onError: (error: Error) => {
