@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { extractSheetId, readClientSheetData, readMainSheetClients, appendToSheet, deleteSheetRows, clearSheetRow, getServiceAccountEmail, getGoogleSheetClient, getAllGoogleSheetClients, clearSheetClientCache, getAllServiceAccountEmails, writeMainSheetCampaignData, resolvePnlSheetName } from "./googleSheets";
 import { processAIChat } from "./ai";
 import { fetchCampaigns, discoverFacebookAdAccounts, discoverTikTokAdvertisers } from "./adPlatforms";
+import { extractClientCode } from "../shared/campaignUtils";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -1174,16 +1175,7 @@ export async function registerRoutes(
 
       const allClients = await storage.getClients();
       const activeHoldClients = allClients.filter(c => c.status === "Active" || c.status === "Hold");
-      const clientCodes = activeHoldClients.map(c => c.clientId).sort((a, b) => b - a);
-
-      function extractClientCode(campaignName: string): number | null {
-        for (const code of clientCodes) {
-          const codeStr = String(code);
-          const regex = new RegExp(`(?:^|[^0-9])${codeStr}(?:$|[^0-9])`);
-          if (regex.test(campaignName)) return code;
-        }
-        return null;
-      }
+      const clientCodes = activeHoldClients.map(c => c.clientId);
 
       const spendByClient = new Map<number, number>();
       const campaignsByClient = new Map<number, Array<{ name: string; spend: string; status: string }>>();
@@ -1191,7 +1183,7 @@ export async function registerRoutes(
       const unmatchedCampaigns: string[] = [];
 
       for (const camp of allCampaigns) {
-        const clientCode = extractClientCode(camp.name);
+        const clientCode = extractClientCode(camp.name, clientCodes);
         if (clientCode !== null) {
           const prev = spendByClient.get(clientCode) || 0;
           spendByClient.set(clientCode, prev + parseFloat(camp.spend || "0"));
@@ -1205,7 +1197,11 @@ export async function registerRoutes(
       }
 
       const clientUpdates: Array<{ clientId: number; campaignDue: string; campaignCount: number; activeCampaigns: number }> = [];
-      const sheetsClients = await getAllGoogleSheetClients().catch(() => [] as any[]);
+      let sheetsClients: Awaited<ReturnType<typeof getAllGoogleSheetClients>> = [];
+      try {
+        sheetsClients = await getAllGoogleSheetClients();
+      } catch {
+      }
       const numAccounts = sheetsClients.length;
 
       for (let idx = 0; idx < activeHoldClients.length; idx++) {
@@ -1217,13 +1213,13 @@ export async function registerRoutes(
         const activeCampaigns = campaigns.filter(c => c.status === "ACTIVE").length;
         clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
 
-        if (client.googleSheetId && numAccounts > 0 && totalSpend > 0) {
+        if (client.googleSheetId && numAccounts > 0) {
           try {
             const sheetsClient = sheetsClients[idx % numAccounts];
             const { pnlSheet } = await resolvePnlSheetName(sheetsClient, client.googleSheetId);
             await sheetsClient.spreadsheets.values.update({
               spreadsheetId: client.googleSheetId,
-              range: `'${pnlSheet}'!F2`,
+              range: `'${pnlSheet}'!E2`,
               valueInputOption: 'USER_ENTERED',
               requestBody: { values: [[campaignDue]] },
             });

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { extractClientCode } from "@shared/campaignUtils";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,15 +74,6 @@ function StatusBadge({ status }: { status: string }) {
   if (normalized === "PAUSED" || normalized === "DISABLE") return <Badge variant="secondary">{status}</Badge>;
   if (normalized === "REMOVED" || normalized === "ARCHIVED" || normalized === "DELETED") return <Badge variant="destructive">{status}</Badge>;
   return <Badge variant="outline">{status}</Badge>;
-}
-
-function extractClientCode(campaignName: string, clientCodes: number[]): number | null {
-  for (const code of clientCodes) {
-    const codeStr = String(code);
-    const regex = new RegExp(`(?:^|[^0-9])${codeStr}(?:$|[^0-9])`);
-    if (regex.test(campaignName)) return code;
-  }
-  return null;
 }
 
 type SortField = "name" | "status" | "spend" | "impressions" | "clicks" | "ctr" | "cpc" | "accountName" | "startDate" | "clientCode";
