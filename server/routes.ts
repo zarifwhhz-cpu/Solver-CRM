@@ -1210,11 +1210,11 @@ export async function registerRoutes(
         const campaignDue = totalSpend.toFixed(2);
         await storage.updateClient(client.id, { campaignDue });
         const campaigns = campaignsByClient.get(client.clientId) || [];
-        const activeStatuses = ["ACTIVE", "ENABLE", "STATUS_ENABLE", "CAMPAIGN_STATUS_ENABLE"];
+        const activeStatuses = ["ACTIVE", "ENABLED", "ENABLE", "STATUS_ENABLE", "CAMPAIGN_STATUS_ENABLE"];
         const activeCampaigns = campaigns.filter(c => activeStatuses.includes(c.status.toUpperCase())).length;
         clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
 
-        if (client.googleSheetId && numAccounts > 0 && totalSpend > 0) {
+        if (client.googleSheetId && numAccounts > 0) {
           try {
             const sheetsClient = sheetsClients[idx % numAccounts];
             const { pnlSheet } = await resolvePnlSheetName(sheetsClient, client.googleSheetId);
