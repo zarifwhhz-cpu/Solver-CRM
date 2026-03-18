@@ -1212,10 +1212,10 @@ export async function registerRoutes(
         const client = activeHoldClients[idx];
         const totalSpend = spendByClient.get(client.clientId) || 0;
         const campaignDue = totalSpend.toFixed(2);
-        await storage.updateClient(client.id, { campaignDue });
         const campaigns = campaignsByClient.get(client.clientId) || [];
-        const activeCampaigns = campaigns.filter(c => activeStatuses.includes(c.status.toUpperCase())).length;
-        clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
+        const activeCampaignCount = campaigns.filter(c => activeStatuses.includes(c.status.toUpperCase())).length;
+        await storage.updateClient(client.id, { campaignDue, campaignCount: campaigns.length, activeCampaigns: activeCampaignCount });
+        clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns: activeCampaignCount });
 
         if (client.googleSheetId && numAccounts > 0) {
           try {

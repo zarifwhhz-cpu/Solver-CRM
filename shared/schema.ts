@@ -9,6 +9,8 @@ export const clients = pgTable("clients", {
   balance: text("balance").notNull().default("0"),
   totalDue: text("total_due").notNull().default("0"),
   campaignDue: text("campaign_due").notNull().default("0"),
+  campaignCount: integer("campaign_count").notNull().default(0),
+  activeCampaigns: integer("active_campaigns").notNull().default(0),
   status: text("status").notNull().default("Inactive"),
   executive: text("executive").notNull().default(""),
   adsAccount: text("ads_account").notNull().default(""),
