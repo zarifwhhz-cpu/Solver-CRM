@@ -3,5 +3,13 @@ dist
 .env
 .replit
 replit.md
+.local
+.config
+.cache
+.upm
+.agents
 attached_assets
 *.log
+.git
+.gitignore
+.DS_Store
