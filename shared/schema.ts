@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -74,6 +74,7 @@ export const adAccounts = pgTable("ad_accounts", {
   accountName: text("account_name").notNull().default(""),
   accessToken: text("access_token").notNull(),
   status: text("status").notNull().default("connected"),
+  showInCampaigns: boolean("show_in_campaigns").notNull().default(true),
 });
 
 export const insertAdAccountSchema = createInsertSchema(adAccounts).omit({ id: true });

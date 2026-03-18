@@ -25,6 +25,7 @@ interface AdAccountSafe {
   accountName: string;
   status: string;
   hasToken: boolean;
+  showInCampaigns: boolean;
 }
 
 interface ClientBasic {
@@ -117,6 +118,8 @@ export default function Campaigns() {
     return map;
   }, [clients]);
 
+  const enabledAccounts = useMemo(() => accounts?.filter(a => a.showInCampaigns) || [], [accounts]);
+
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (selectedAccountIds.length > 0) params.set("accounts", selectedAccountIds.join(","));
@@ -136,19 +139,18 @@ export default function Campaigns() {
       if (!res.ok) throw new Error("Failed to fetch campaigns");
       return res.json();
     },
-    enabled: (accounts?.length || 0) > 0,
+    enabled: enabledAccounts.length > 0,
     staleTime: 60_000,
   });
-
-  const allSelected = selectedAccountIds.length === 0 || selectedAccountIds.length === (accounts?.length || 0);
+  const allSelected = selectedAccountIds.length === 0 || selectedAccountIds.length === enabledAccounts.length;
 
   const toggleAccount = (id: number) => {
-    if (!accounts) return;
+    if (!enabledAccounts.length) return;
     if (selectedAccountIds.length === 0) {
-      setSelectedAccountIds(accounts.filter(a => a.id !== id).map(a => a.id));
+      setSelectedAccountIds(enabledAccounts.filter(a => a.id !== id).map(a => a.id));
     } else {
       const next = selectedAccountIds.includes(id) ? selectedAccountIds.filter(a => a !== id) : [...selectedAccountIds, id];
-      if (next.length === accounts.length) {
+      if (next.length === enabledAccounts.length) {
         setSelectedAccountIds([]);
       } else {
         setSelectedAccountIds(next);
@@ -157,11 +159,7 @@ export default function Campaigns() {
   };
 
   const selectAll = () => {
-    if (allSelected) {
-      setSelectedAccountIds([]);
-    } else {
-      setSelectedAccountIds([]);
-    }
+    setSelectedAccountIds([]);
   };
 
   const handleSort = (field: SortField) => {
@@ -365,7 +363,7 @@ export default function Campaigns() {
               <Button variant="outline" size="sm" className="gap-1 h-9" data-testid="button-account-filter">
                 <Filter className="w-3.5 h-3.5" />
                 Accounts
-                {selectedAccountIds.length > 0 && selectedAccountIds.length < (accounts?.length || 0) && (
+                {selectedAccountIds.length > 0 && selectedAccountIds.length < enabledAccounts.length && (
                   <Badge variant="secondary" className="ml-1 px-1.5 py-0 text-xs">{selectedAccountIds.length}</Badge>
                 )}
                 <ChevronDown className="w-3 h-3 ml-1" />
@@ -382,7 +380,7 @@ export default function Campaigns() {
               </div>
               <ScrollArea className="max-h-60">
                 <div className="p-2 space-y-1">
-                  {accounts?.map(acct => (
+                  {enabledAccounts.map(acct => (
                     <label
                       key={acct.id}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
@@ -487,6 +485,19 @@ export default function Campaigns() {
                 <h3 className="font-semibold">No ad accounts connected</h3>
                 <p className="text-sm text-muted-foreground mt-1">
                   Go to Ad Accounts to connect your Facebook, Google, or TikTok accounts first.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ) : enabledAccounts.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
+              <AlertTriangle className="w-10 h-10 text-amber-500" />
+              <div className="text-center">
+                <h3 className="font-semibold">No accounts enabled for campaigns</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Turn on the Campaigns toggle for accounts you want to see here.
+                  <br />Go to <strong>Ad Accounts</strong> and enable the toggle next to the accounts you need.
                 </p>
               </div>
             </CardContent>

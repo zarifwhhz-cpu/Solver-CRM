@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, RefreshCw, Trash2, Loader2, BarChart3, Eye, EyeOff, AlertCircle, Zap, CheckCircle2, LogIn } from "lucide-react";
 import { SiFacebook, SiGoogleads, SiTiktok } from "react-icons/si";
 import { useLocation } from "wouter";
@@ -23,6 +25,7 @@ interface AdAccountSafe {
   accountName: string;
   status: string;
   hasToken: boolean;
+  showInCampaigns: boolean;
 }
 
 interface Campaign {
@@ -665,6 +668,19 @@ export default function AdAccounts() {
     },
   });
 
+  const toggleCampaignsMutation = useMutation({
+    mutationFn: async ({ id, showInCampaigns }: { id: number; showInCampaigns: boolean }) => {
+      await apiRequest("PUT", `/api/ad-accounts/${id}`, { showInCampaigns });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ad-accounts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/campaigns"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const [showAddMore, setShowAddMore] = useState(false);
   const [addMoreToken, setAddMoreToken] = useState("");
   const [addMorePlatform, setAddMorePlatform] = useState("facebook");
@@ -791,7 +807,22 @@ export default function AdAccounts() {
                               <span>ID: {account.accountId}</span>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-3">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <div className="flex items-center gap-1.5">
+                                  <Switch
+                                    checked={account.showInCampaigns}
+                                    onCheckedChange={(checked) => toggleCampaignsMutation.mutate({ id: account.id, showInCampaigns: checked })}
+                                    data-testid={`switch-campaigns-${account.id}`}
+                                  />
+                                  <span className="text-xs text-muted-foreground whitespace-nowrap">Campaigns</span>
+                                </div>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {account.showInCampaigns ? "Showing in Campaigns page" : "Hidden from Campaigns page"}
+                              </TooltipContent>
+                            </Tooltip>
                             <CampaignView account={account} />
                             <Button
                               variant="ghost" size="icon"

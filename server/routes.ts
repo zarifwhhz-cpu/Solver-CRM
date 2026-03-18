@@ -947,6 +947,7 @@ export async function registerRoutes(
         accountName: a.accountName,
         status: a.status,
         hasToken: !!a.accessToken,
+        showInCampaigns: a.showInCampaigns,
       }));
       res.json(safe);
     } catch (error: any) {
@@ -981,16 +982,17 @@ export async function registerRoutes(
   app.put("/api/ad-accounts/:id", async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { accountName, accessToken, status } = req.body;
+      const { accountName, accessToken, status, showInCampaigns } = req.body;
       const updateData: any = {};
       if (accountName !== undefined) updateData.accountName = accountName;
       if (accessToken) updateData.accessToken = accessToken;
       if (status) updateData.status = status;
+      if (showInCampaigns !== undefined) updateData.showInCampaigns = showInCampaigns;
 
       const result = await db.update(adAccounts).set(updateData).where(eq(adAccounts.id, id)).returning();
       if (result.length === 0) return res.status(404).json({ message: "Account not found" });
 
-      res.json({ id: result[0].id, platform: result[0].platform, accountId: result[0].accountId, accountName: result[0].accountName, status: result[0].status });
+      res.json({ id: result[0].id, platform: result[0].platform, accountId: result[0].accountId, accountName: result[0].accountName, status: result[0].status, showInCampaigns: result[0].showInCampaigns });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -1094,10 +1096,10 @@ export async function registerRoutes(
       const dateRange = since && until ? { since, until } : undefined;
       let accounts;
       if (accountIds.length > 0) {
-        const { inArray } = await import("drizzle-orm");
-        accounts = await db.select().from(adAccounts).where(inArray(adAccounts.id, accountIds));
+        const { inArray, and } = await import("drizzle-orm");
+        accounts = await db.select().from(adAccounts).where(and(inArray(adAccounts.id, accountIds), eq(adAccounts.showInCampaigns, true)));
       } else {
-        accounts = await db.select().from(adAccounts);
+        accounts = await db.select().from(adAccounts).where(eq(adAccounts.showInCampaigns, true));
       }
 
       const allCampaigns: Array<{
