@@ -242,6 +242,8 @@ export default function Dashboard() {
     },
   });
 
+  const [campaignMetrics, setCampaignMetrics] = useState<Map<number, { campaignCount: number; activeCampaigns: number }>>(new Map());
+
   const syncCampaignsMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/campaigns/sync-to-clients", {});
@@ -250,6 +252,11 @@ export default function Dashboard() {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/clients"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      const metricsMap = new Map<number, { campaignCount: number; activeCampaigns: number }>();
+      for (const u of data.clientUpdates || []) {
+        metricsMap.set(u.clientId, { campaignCount: u.campaignCount, activeCampaigns: u.activeCampaigns });
+      }
+      setCampaignMetrics(metricsMap);
       const activeCount = (data.clientUpdates || []).reduce((sum: number, u: any) => sum + (u.activeCampaigns || 0), 0);
       toast({
         title: "Campaign sync complete",
@@ -608,9 +615,18 @@ export default function Dashboard() {
                         {formatBDT(client.totalDue)}
                       </TableCell>
                       <TableCell
-                        className={`text-right font-mono text-sm ${campDue > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
+                        className={`text-right text-sm ${campDue > 0 ? "text-orange-600 dark:text-orange-400" : "text-muted-foreground"}`}
                       >
-                        {campDue > 0 ? formatBDT(client.campaignDue) : "—"}
+                        {campDue > 0 ? (
+                          <div>
+                            <span className="font-mono">{formatBDT(client.campaignDue)}</span>
+                            {campaignMetrics.has(client.clientId) && (
+                              <span className="block text-xs text-muted-foreground">
+                                {campaignMetrics.get(client.clientId)!.campaignCount} campaigns · {campaignMetrics.get(client.clientId)!.activeCampaigns} active
+                              </span>
+                            )}
+                          </div>
+                        ) : "—"}
                       </TableCell>
                       <TableCell>
                         <StatusBadge status={client.status} />

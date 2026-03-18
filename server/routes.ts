@@ -1210,19 +1210,52 @@ export async function registerRoutes(
         const campaignDue = totalSpend.toFixed(2);
         await storage.updateClient(client.id, { campaignDue });
         const campaigns = campaignsByClient.get(client.clientId) || [];
-        const activeCampaigns = campaigns.filter(c => c.status === "ACTIVE").length;
+        const activeStatuses = ["ACTIVE", "ENABLE", "STATUS_ENABLE", "CAMPAIGN_STATUS_ENABLE"];
+        const activeCampaigns = campaigns.filter(c => activeStatuses.includes(c.status.toUpperCase())).length;
         clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
 
-        if (client.googleSheetId && numAccounts > 0) {
+        if (client.googleSheetId && numAccounts > 0 && totalSpend > 0) {
           try {
             const sheetsClient = sheetsClients[idx % numAccounts];
             const { pnlSheet } = await resolvePnlSheetName(sheetsClient, client.googleSheetId);
-            await sheetsClient.spreadsheets.values.update({
+            const sheetData = await sheetsClient.spreadsheets.values.get({
               spreadsheetId: client.googleSheetId,
-              range: `'${pnlSheet}'!E2`,
-              valueInputOption: 'USER_ENTERED',
-              requestBody: { values: [[campaignDue]] },
+              range: `'${pnlSheet}'!A1:G1000`,
+              valueRenderOption: 'FORMATTED_VALUE',
             });
+            const rows = sheetData.data.values || [];
+            let spendRow = -1;
+            for (let r = 3; r < rows.length; r++) {
+              const note = rows[r]?.[6]?.toString().trim() || '';
+              if (note === 'Campaign Sync') {
+                spendRow = r + 1;
+                break;
+              }
+            }
+            if (spendRow > 0) {
+              await sheetsClient.spreadsheets.values.update({
+                spreadsheetId: client.googleSheetId,
+                range: `'${pnlSheet}'!F${spendRow}`,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: { values: [[campaignDue]] },
+              });
+            } else {
+              let lastDateRow = 3;
+              for (let r = rows.length - 1; r >= 3; r--) {
+                const cell = rows[r]?.[0]?.toString().trim();
+                if (cell && /\d/.test(cell)) {
+                  lastDateRow = r + 1;
+                  break;
+                }
+              }
+              const targetRow = lastDateRow + 1;
+              await sheetsClient.spreadsheets.values.update({
+                spreadsheetId: client.googleSheetId,
+                range: `'${pnlSheet}'!D${targetRow}:G${targetRow}`,
+                valueInputOption: 'USER_ENTERED',
+                requestBody: { values: [['Facebook', '', campaignDue, 'Campaign Sync']] },
+              });
+            }
           } catch (err: any) {
             console.error(`[Campaign Sync] Failed to update PNL sheet for ${client.name}: ${err.message}`);
           }
