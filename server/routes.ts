@@ -1203,6 +1203,10 @@ export async function registerRoutes(
       } catch {
       }
       const numAccounts = sheetsClients.length;
+      const activeStatuses = ["ACTIVE", "ENABLED", "ENABLE", "STATUS_ENABLE", "CAMPAIGN_STATUS_ENABLE"];
+      let pnlSheetsUpdated = 0;
+      let pnlSheetsFailed = 0;
+      const pnlSheetErrors: Array<{ clientName: string; error: string }> = [];
 
       for (let idx = 0; idx < activeHoldClients.length; idx++) {
         const client = activeHoldClients[idx];
@@ -1210,7 +1214,6 @@ export async function registerRoutes(
         const campaignDue = totalSpend.toFixed(2);
         await storage.updateClient(client.id, { campaignDue });
         const campaigns = campaignsByClient.get(client.clientId) || [];
-        const activeStatuses = ["ACTIVE", "ENABLED", "ENABLE", "STATUS_ENABLE", "CAMPAIGN_STATUS_ENABLE"];
         const activeCampaigns = campaigns.filter(c => activeStatuses.includes(c.status.toUpperCase())).length;
         clientUpdates.push({ clientId: client.clientId, campaignDue, campaignCount: campaigns.length, activeCampaigns });
 
@@ -1256,7 +1259,12 @@ export async function registerRoutes(
                 requestBody: { values: [['Facebook', '', campaignDue, 'Campaign Sync']] },
               });
             }
+            pnlSheetsUpdated++;
           } catch (err: any) {
+            pnlSheetsFailed++;
+            if (pnlSheetErrors.length < 5) {
+              pnlSheetErrors.push({ clientName: client.name, error: err.message });
+            }
             console.error(`[Campaign Sync] Failed to update PNL sheet for ${client.name}: ${err.message}`);
           }
         }
@@ -1285,6 +1293,7 @@ export async function registerRoutes(
         clientsUpdated: clientUpdates.length,
         clientUpdates,
         sheetWriteResult,
+        pnlSheets: { updated: pnlSheetsUpdated, failed: pnlSheetsFailed, errors: pnlSheetErrors },
         errors: fetchErrors,
       });
     } catch (error: any) {

@@ -365,7 +365,7 @@ export default function Dashboard() {
               data-testid="button-sync-campaigns"
             >
               <Target className={`w-4 h-4 ${syncCampaignsMutation.isPending ? "animate-spin" : ""}`} />
-              {syncCampaignsMutation.isPending ? "Syncing..." : "Sync Campaigns"}
+              {syncCampaignsMutation.isPending ? "Syncing..." : "Sync Campaign Data"}
             </Button>
             <Button
               variant="secondary"
